@@ -225,32 +225,58 @@ export async function fetchProducts() {
   return { data: mappedProducts.length ? mappedProducts : fallbackProducts, error: null, source: 'supabase' };
 }
 
-export async function createOrder({ customer, items, total, note }) {
+export async function createOrder({ customer, items, total, note, userId }) {
   if (!isSupabaseConfigured) {
     return { data: null, error: new Error('Supabase chưa được cấu hình.') };
   }
 
-  const { data, error } = await supabase
+  const { data: session } = await supabase.auth.getSession();
+  const currentUserId = session?.session?.user?.id;
+
+  // Insert order với đúng tên cột từ schema Supabase
+  const { data: orderData, error: orderError } = await supabase
     .from('orders')
     .insert({
-      customer_name: customer.fullName,
-      customer_phone: customer.phone,
-      customer_address: customer.address,
-      note,
+      user_id: currentUserId,
+      recipient_name: customer.fullName,
+      recipient_phone: customer.phone,
+      shipping_address: customer.address,
+      note: customer.note || note || null,
+      subtotal: total,
       total_amount: total,
-      status: 'pending',
-      items: items.map((item) => ({
-        product_id: item.id,
-        name: item.name,
-        price: item.price,
-        unit: item.unit,
-        quantity: item.quantity,
-      })),
+      shipping_fee: 0,
+      discount_amount: 0,
+      coins_used: 0,
+      coins_earned: 0,
+      order_status: 'pending',
+      payment_method: 'cod',
+      payment_status: 'unpaid',
     })
-    .select('id,status,total_amount,created_at')
+    .select('id, order_code, total_amount, order_status, created_at')
     .single();
 
-  return { data, error };
+  if (orderError) {
+    return { data: null, error: orderError };
+  }
+
+  // Insert order_items với đúng tên cột
+  if (orderData?.id && items?.length > 0) {
+    const { error: itemsError } = await supabase.from('order_items').insert(
+      items.map((item) => ({
+        order_id: orderData.id,
+        product_id: item.id,
+        product_name: item.name,
+        unit_price: item.price,
+        quantity: item.quantity,
+        item_subtotal: item.price * item.quantity,
+      }))
+    );
+    if (itemsError) {
+      console.warn('order_items insert error (non-critical):', itemsError.message);
+    }
+  }
+
+  return { data: orderData, error: null };
 }
 
 export function formatCurrency(value) {

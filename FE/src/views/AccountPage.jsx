@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { AuthModal } from '../components/AuthModal.jsx';
@@ -31,11 +31,7 @@ export function AccountPage() {
           <h1>{user?.user_metadata?.full_name || user?.email || 'Khách hàng FreshFruit'}</h1>
           <p>{user ? user.email : 'Đăng nhập để đồng bộ hồ sơ, đơn hàng và điểm thưởng qua Supabase Auth.'}</p>
 
-          <div className={`data-banner ${isSupabaseConfigured ? 'success' : 'warning'}`}>
-            {isSupabaseConfigured
-              ? 'Supabase Auth đã được cấu hình bằng publishable key.'
-              : 'Chưa có cấu hình Supabase, tài khoản đang chạy demo local.'}
-          </div>
+
 
           {user ? (
             <button className="btn btn-ghost full-width" type="button" onClick={signOut}>Đăng xuất</button>

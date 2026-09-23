@@ -1,6 +1,6 @@
-﻿'use client';
+'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from '../components/Header.jsx';
 import { Hero } from '../components/Hero.jsx';
 import { CategoryFilter } from '../components/CategoryFilter.jsx';
@@ -8,6 +8,9 @@ import { ProductGrid } from '../components/ProductGrid.jsx';
 import { CartPanel } from '../components/CartPanel.jsx';
 import { AuthModal } from '../components/AuthModal.jsx';
 import { CheckoutSection } from '../components/CheckoutSection.jsx';
+import { ToastContainer } from '../components/Toast.jsx';
+import { useToast } from '../hooks/useToast.js';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import { categories, fallbackProducts, fetchProducts } from '../services/productService.js';
 
 export default function HomePageView() {
@@ -18,6 +21,38 @@ export default function HomePageView() {
   const [productError, setProductError] = useState('');
   const [cartItems, setCartItems] = useState([]);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [lastAdded, setLastAdded] = useState(null);
+  const [isCartLoaded, setIsCartLoaded] = useState(false);
+  const lastAddedRef = useRef(null);
+
+  const { toasts, addToast, removeToast } = useToast();
+  const { user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (authLoading) return; // Wait for auth to initialize
+
+    if (user) {
+      const savedCart = localStorage.getItem(`cart_${user.id}`);
+      if (savedCart) {
+        try {
+          setCartItems(JSON.parse(savedCart));
+        } catch (e) {
+          setCartItems([]);
+        }
+      } else {
+        setCartItems([]);
+      }
+    } else {
+      setCartItems([]);
+    }
+    setIsCartLoaded(true);
+  }, [user, authLoading]);
+
+  useEffect(() => {
+    if (user && isCartLoaded) {
+      localStorage.setItem(`cart_${user.id}`, JSON.stringify(cartItems));
+    }
+  }, [cartItems, user, isCartLoaded]);
 
   useEffect(() => {
     let mounted = true;
@@ -39,7 +74,8 @@ export default function HomePageView() {
   const filteredProducts = useMemo(() => {
     if (activeCategory === 'all') return products;
     return products.filter((product) => product.category === activeCategory);
-  }, [activeCategory]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory, products]);
 
   const cartTotal = cartItems.reduce(
     (total, item) => total + item.price * item.quantity,
@@ -49,6 +85,15 @@ export default function HomePageView() {
   const totalQuantity = cartItems.reduce((total, item) => total + item.quantity, 0);
 
   const rewardItems = products.slice(0, 3);
+
+  const handleLoginRequired = () => {
+    setIsAuthOpen(true);
+    addToast({
+      message: '🔒 Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng.',
+      type: 'info',
+      duration: 3000,
+    });
+  };
 
   const handleAddToCart = (product) => {
     setCartItems((currentItems) => {
@@ -64,6 +109,18 @@ export default function HomePageView() {
 
       return [...currentItems, { ...product, quantity: 1 }];
     });
+
+    // Track last added for CartPanel banner
+    const addedEntry = { ...product, _addTime: Date.now() };
+    setLastAdded(addedEntry);
+    lastAddedRef.current = addedEntry;
+
+    // Show toast notification
+    addToast({
+      message: `🛒 Đã thêm "${product.name}" vào giỏ hàng!`,
+      type: 'cart',
+      duration: 2800,
+    });
   };
 
   const handleChangeQuantity = (productId, quantity) => {
@@ -72,6 +129,10 @@ export default function HomePageView() {
         .map((item) => (item.id === productId ? { ...item, quantity } : item))
         .filter((item) => item.quantity > 0),
     );
+  };
+
+  const handleClearCart = () => {
+    setCartItems([]);
   };
 
   return (
@@ -86,7 +147,7 @@ export default function HomePageView() {
       <main>
         <Hero
           cartQuantity={totalQuantity}
-          onShopNow={() => document.getElementById('products')?.scrollIntoView()}
+          onShopNow={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })}
         />
 
         <section className="section web-preview-section" aria-label="Khối giao diện web mẫu">
@@ -159,6 +220,7 @@ export default function HomePageView() {
             dataSource={dataSource}
             error={productError}
             onAddToCart={handleAddToCart}
+            onLoginRequired={handleLoginRequired}
           />
         </section>
 
@@ -167,11 +229,13 @@ export default function HomePageView() {
             items={cartItems}
             total={cartTotal}
             onChangeQuantity={handleChangeQuantity}
+            lastAdded={lastAdded}
           />
           <CheckoutSection
             cartItems={cartItems}
             cartTotal={cartTotal}
             onLoginClick={() => setIsAuthOpen(true)}
+            onClearCart={handleClearCart}
           />
         </section>
       </main>
@@ -182,7 +246,9 @@ export default function HomePageView() {
       </footer>
 
       {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
+
+      {/* Global toast notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
-
