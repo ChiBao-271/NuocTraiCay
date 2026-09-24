@@ -1,0 +1,11 @@
+{
+  "name": "fruit-online-shop-be",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {}
+}
