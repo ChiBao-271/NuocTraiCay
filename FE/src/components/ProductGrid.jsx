@@ -38,7 +38,7 @@ function ProductCard({ product, onAddToCart, onLoginRequired }) {
       className={`product-card ${isAdded ? 'product-card-added' : ''}`}
       style={{ '--product-gradient': product.gradient, '--product-accent': product.accent }}
     >
-      <div className="product-image">
+      <a href={`/product/${product.id}`} className="product-image" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
         <span className="product-fruit fruit-a">{product.image}</span>
         <span className="product-fruit fruit-b">{product.fruit}</span>
         <div className="mini-bottle">
@@ -53,11 +53,13 @@ function ProductCard({ product, onAddToCart, onLoginRequired }) {
             {product.image}
           </span>
         )}
-      </div>
+      </a>
 
       <div className="product-content">
         <span className="rating">⭐ 4.9 · Fresh today</span>
-        <h3>{product.name}</h3>
+        <a href={`/product/${product.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+          <h3>{product.name}</h3>
+        </a>
         <p>{product.description}</p>
         <div className="product-meta">
           <strong>{formatCurrency(product.price)}</strong>

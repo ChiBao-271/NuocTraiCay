@@ -1,242 +1,205 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '../components/Header.jsx';
 import { Hero } from '../components/Hero.jsx';
-import { CategoryFilter } from '../components/CategoryFilter.jsx';
-import { ProductGrid } from '../components/ProductGrid.jsx';
-import { CartPanel } from '../components/CartPanel.jsx';
 import { AuthModal } from '../components/AuthModal.jsx';
-import { CheckoutSection } from '../components/CheckoutSection.jsx';
 import { ToastContainer } from '../components/Toast.jsx';
 import { useToast } from '../hooks/useToast.js';
+import { useCart } from '../contexts/CartContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { categories, fallbackProducts, fetchProducts } from '../services/productService.js';
+import { fallbackProducts, fetchProducts, formatCurrency } from '../services/productService.js';
 
 export default function HomePageView() {
-  const [activeCategory, setActiveCategory] = useState('all');
   const [products, setProducts] = useState(fallbackProducts);
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [dataSource, setDataSource] = useState('local');
-  const [productError, setProductError] = useState('');
-  const [cartItems, setCartItems] = useState([]);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [lastAdded, setLastAdded] = useState(null);
-  const [isCartLoaded, setIsCartLoaded] = useState(false);
-  const lastAddedRef = useRef(null);
-
   const { toasts, addToast, removeToast } = useToast();
-  const { user, loading: authLoading } = useAuth();
-
-  useEffect(() => {
-    if (authLoading) return; // Wait for auth to initialize
-
-    if (user) {
-      const savedCart = localStorage.getItem(`cart_${user.id}`);
-      if (savedCart) {
-        try {
-          setCartItems(JSON.parse(savedCart));
-        } catch (e) {
-          setCartItems([]);
-        }
-      } else {
-        setCartItems([]);
-      }
-    } else {
-      setCartItems([]);
-    }
-    setIsCartLoaded(true);
-  }, [user, authLoading]);
-
-  useEffect(() => {
-    if (user && isCartLoaded) {
-      localStorage.setItem(`cart_${user.id}`, JSON.stringify(cartItems));
-    }
-  }, [cartItems, user, isCartLoaded]);
+  const { totalQuantity, addToCart } = useCart();
+  const { user } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     let mounted = true;
-
-    fetchProducts().then(({ data, error, source }) => {
+    fetchProducts().then(({ data }) => {
       if (!mounted) return;
-
       setProducts(data);
-      setDataSource(source);
-      setProductError(error?.message || '');
       setLoadingProducts(false);
     });
-
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
-  const filteredProducts = useMemo(() => {
-    if (activeCategory === 'all') return products;
-    return products.filter((product) => product.category === activeCategory);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCategory, products]);
-
-  const cartTotal = cartItems.reduce(
-    (total, item) => total + item.price * item.quantity,
-    0,
-  );
-
-  const totalQuantity = cartItems.reduce((total, item) => total + item.quantity, 0);
-
-  const rewardItems = products.slice(0, 3);
-
-  const handleLoginRequired = () => {
-    setIsAuthOpen(true);
-    addToast({
-      message: '🔒 Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng.',
-      type: 'info',
-      duration: 3000,
-    });
-  };
+  const featuredProducts = products.slice(0, 4);
 
   const handleAddToCart = (product) => {
-    setCartItems((currentItems) => {
-      const existingItem = currentItems.find((item) => item.id === product.id);
-
-      if (existingItem) {
-        return currentItems.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
-        );
-      }
-
-      return [...currentItems, { ...product, quantity: 1 }];
-    });
-
-    // Track last added for CartPanel banner
-    const addedEntry = { ...product, _addTime: Date.now() };
-    setLastAdded(addedEntry);
-    lastAddedRef.current = addedEntry;
-
-    // Show toast notification
-    addToast({
-      message: `🛒 Đã thêm "${product.name}" vào giỏ hàng!`,
-      type: 'cart',
-      duration: 2800,
-    });
-  };
-
-  const handleChangeQuantity = (productId, quantity) => {
-    setCartItems((currentItems) =>
-      currentItems
-        .map((item) => (item.id === productId ? { ...item, quantity } : item))
-        .filter((item) => item.quantity > 0),
-    );
-  };
-
-  const handleClearCart = () => {
-    setCartItems([]);
+    if (!user) {
+      setIsAuthOpen(true);
+      addToast({ message: '🔒 Vui lòng đăng nhập để thêm vào giỏ hàng.', type: 'info', duration: 3000 });
+      return;
+    }
+    addToCart(product);
+    addToast({ message: `🛒 Đã thêm "${product.name}" vào giỏ!`, type: 'cart', duration: 2500 });
   };
 
   return (
     <div className="site-shell">
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
-      <Header
-        cartQuantity={totalQuantity}
-        onLoginClick={() => setIsAuthOpen(true)}
-      />
+      <Header onLoginClick={() => setIsAuthOpen(true)} />
 
       <main>
         <Hero
           cartQuantity={totalQuantity}
-          onShopNow={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })}
+          onShopNow={() => router.push('/menu')}
         />
 
-        <section className="section web-preview-section" aria-label="Khối giao diện web mẫu">
+        {/* Quick navigation cards */}
+        <section className="section home-quicknav">
           <div className="section-heading center-heading">
-            <span className="eyebrow">Responsive web UI</span>
-            <h2>Giao diện web lấy cảm hứng từ bản vẽ nước ép</h2>
-            <p>
-              Màu pastel, bo góc lớn, thẻ floating, thanh tab dưới và hiệu ứng trái cây bay
-              được chuyển thành trải nghiệm website responsive.
-            </p>
+            <span className="eyebrow">Khám phá</span>
+            <h2>Bắt đầu từ đây</h2>
+          </div>
+          <div className="quicknav-grid">
+            <a href="/menu" className="quicknav-card quicknav-menu">
+              <span className="quicknav-icon">🧃</span>
+              <div>
+                <strong>Xem Menu</strong>
+                <small>Trái cây, nước ép & combo</small>
+              </div>
+              <span className="quicknav-arrow">→</span>
+            </a>
+            <a href="/cart" className="quicknav-card quicknav-cart">
+              <span className="quicknav-icon">🛒</span>
+              <div>
+                <strong>Giỏ hàng</strong>
+                <small>{totalQuantity > 0 ? `${totalQuantity} sản phẩm đang chờ` : 'Giỏ hàng trống'}</small>
+              </div>
+              <span className="quicknav-arrow">→</span>
+            </a>
+            <a href="/rewards" className="quicknav-card quicknav-rewards">
+              <span className="quicknav-icon">🎁</span>
+              <div>
+                <strong>Ưu đãi & Xu</strong>
+                <small>Flash sale, voucher mùa hè</small>
+              </div>
+              <span className="quicknav-arrow">→</span>
+            </a>
+            <a href="/account" className="quicknav-card quicknav-account">
+              <span className="quicknav-icon">👤</span>
+              <div>
+                <strong>Tài khoản</strong>
+                <small>{user ? 'Quản lý đơn hàng' : 'Đăng nhập / Đăng ký'}</small>
+              </div>
+              <span className="quicknav-arrow">→</span>
+            </a>
+          </div>
+        </section>
+
+        {/* Flash Deals section */}
+        <section className="section flash-deals-section">
+          <div className="flash-deals-header">
+            <div className="flash-title">
+              <h2>⚡ FLASH SALE <span style={{ fontSize: '1.5rem', fontWeight: 400 }}>| MÙA HÈ</span></h2>
+              <p>Chỉ còn vài giờ! Cơ hội săn deal sốc giảm đến 50%</p>
+            </div>
+            <div className="flash-timer">
+              <div className="timer-box"><strong>02</strong><small>Giờ</small></div>
+              <span style={{ fontSize: '1.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>:</span>
+              <div className="timer-box"><strong>45</strong><small>Phút</small></div>
+              <span style={{ fontSize: '1.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>:</span>
+              <div className="timer-box"><strong>12</strong><small>Giây</small></div>
+            </div>
+          </div>
+          
+          <div className="flash-grid">
+            {[
+              { id: 'apple-juice-01', name: 'Green Glow Detox', image: '🍏', oldPrice: 39000, newPrice: 19000, sold: 85 },
+              { id: 'mango-juice-01', name: 'Mango Sunrise', image: '🥭', oldPrice: 42000, newPrice: 21000, sold: 62 },
+              { id: 'banana-01', name: 'Ruby Guava Sparkle', image: '🍐', oldPrice: 69000, newPrice: 34500, sold: 90 },
+              { id: 'family-combo-01', name: 'Family Fresh Box', image: '🧺', oldPrice: 159000, newPrice: 99000, sold: 40 }
+            ].map(deal => (
+              <a href={`/product/${deal.id}`} className="flash-card" key={deal.id}>
+                <span className="flash-badge">-50%</span>
+                <div className="flash-image">{deal.image}</div>
+                <h3>{deal.name}</h3>
+                <div className="flash-prices">
+                  <span className="price-new">{formatCurrency(deal.newPrice)}</span>
+                  <span className="price-old">{formatCurrency(deal.oldPrice)}</span>
+                </div>
+                <div className="flash-progress">
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${deal.sold}%` }}></div>
+                  </div>
+                  <div className="progress-text">
+                    <span>Đã bán {deal.sold}%</span>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+
+        {/* Featured products preview */}
+        <section className="section home-featured">
+          <div className="section-heading">
+            <span className="eyebrow">Nổi bật hôm nay</span>
+            <h2>Sản phẩm bán chạy</h2>
+            <p>Những lựa chọn được yêu thích nhất của cửa hàng.</p>
           </div>
 
-          <div className="preview-gallery">
-            <article className="preview-frame preview-voucher">
-              <div className="preview-status"><span>9:41</span><span>●●●</span></div>
-              <div className="preview-topbar"><button type="button">‹</button><strong>Ưu đãi</strong><button type="button">⌕</button></div>
-              <div className="coin-card"><span>⭐</span><div><strong>1.250 Xu</strong><small>Hết hạn 31/12/2026</small></div><button type="button">Lịch sử</button></div>
-              <div className="sale-banner"><small>FLASH SALE MÙA HÈ</small><strong>Giảm đến 50% toàn menu</strong><span>Áp dụng Citrus Punch và Green Glow</span></div>
-              <div className="mission-row">
-                {['Điểm danh', 'Đánh giá', 'Giới thiệu'].map((item, index) => <div key={item}><span>{['🎁', '💬', '👥'][index]}</span><strong>{item}</strong><small>+50 xu</small></div>)}
-              </div>
-              <div className="reward-grid">
-                {rewardItems.map((item) => <div key={item.id}><span>{item.image}</span><strong>{item.name}</strong><button type="button">Đổi quà</button></div>)}
-              </div>
-              <div className="preview-tabbar"><span>⌂</span><span className="active">🎁 Rewards</span><span>🔔</span><span>♡</span></div>
-            </article>
-
-            <article className="preview-frame preview-notice">
-              <div className="preview-status"><span>9:41</span><span>●●●</span></div>
-              <div className="preview-topbar"><button type="button">‹</button><strong>Thông báo</strong><button type="button">⚙</button></div>
-              {['Khuyến mãi', 'Đơn hàng', 'Hệ thống'].map((group, groupIndex) => (
-                <div className="notice-block" key={group}>
-                  <strong>{group}</strong>
-                  {[0, 1].map((itemIndex) => <div className="notice-card" key={`${group}-${itemIndex}`}><span>{['🎟️', '🚚', '✨'][groupIndex]}</span><div><b>{groupIndex === 1 ? 'Đơn hàng đang được chuẩn bị' : 'Ưu đãi mới cho bạn'}</b><small>{itemIndex + 5} phút trước</small></div></div>)}
+          {loadingProducts ? (
+            <div className="home-featured-grid">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="home-product-card skeleton-card">
+                  <div className="skeleton-image" />
+                  <div className="skeleton-content">
+                    <div className="skeleton-line skeleton-line-short" />
+                    <div className="skeleton-line" />
+                    <div className="skeleton-btn" />
+                  </div>
                 </div>
               ))}
-              <div className="preview-tabbar"><span>⌂</span><span>🛒</span><span className="active">🔔 Notification</span><span>♡</span></div>
-            </article>
+            </div>
+          ) : (
+            <div className="home-featured-grid">
+              {featuredProducts.map((product) => (
+                <article
+                  key={product.id}
+                  className="home-product-card"
+                  style={{ '--product-gradient': product.gradient, '--product-accent': product.accent }}
+                >
+                  <a href={`/product/${product.id}`} className="home-product-image" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+                    <span className="home-product-fruit">{product.image}</span>
+                    <span className="home-product-leaf">{product.fruit}</span>
+                  </a>
+                  <div className="home-product-body">
+                    <span className="home-product-badge">{product.badge}</span>
+                    <a href={`/product/${product.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <h3>{product.name}</h3>
+                    </a>
+                    <p>{product.description}</p>
+                    <div className="home-product-footer">
+                      <strong>{formatCurrency(product.price)}<small>/{product.unit}</small></strong>
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        onClick={() => handleAddToCart(product)}
+                      >
+                        + Thêm
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
 
-            <article className="preview-frame preview-profile">
-              <div className="preview-status"><span>9:41</span><span>●●●</span></div>
-              <h3>My Account</h3>
-              <div className="profile-card"><span>👩🏻</span><div><strong>Maya Citrus 👋</strong><small>maya.citrus@freshjp.com</small></div><button type="button">✎</button></div>
-              {['My Orders', 'Delivery Address', 'Payment Methods', 'Notifications', 'Help & Support', 'About Us'].map((item) => <div className="profile-link" key={item}><span>▣</span><strong>{item}</strong><small>›</small></div>)}
-              <button className="logout-preview" type="button">↗ Log Out</button>
-              <div className="preview-tabbar"><span>⌂</span><span>🛒</span><span>🔔</span><span className="active">Profile</span></div>
-            </article>
+          <div className="home-see-all">
+            <a href="/menu" className="btn btn-ghost">
+              Xem tất cả sản phẩm →
+            </a>
           </div>
-        </section>
-
-        <section id="products" className="section section-products">
-          <div className="section-heading">
-            <span className="eyebrow">Fresh shop</span>
-            <h2>Menu pastel cho website bán trái cây</h2>
-            <p>
-              Chọn nước ép, combo trái cây và đổi thưởng với layout thẻ mềm, hoạt ảnh nổi
-              nhẹ phù hợp giao diện thương mại điện tử trên web.
-            </p>
-          </div>
-
-          <CategoryFilter
-            categories={categories}
-            activeCategory={activeCategory}
-            onChange={setActiveCategory}
-          />
-
-          <ProductGrid
-            products={filteredProducts}
-            loading={loadingProducts}
-            dataSource={dataSource}
-            error={productError}
-            onAddToCart={handleAddToCart}
-            onLoginRequired={handleLoginRequired}
-          />
-        </section>
-
-        <section className="section split-section">
-          <CartPanel
-            items={cartItems}
-            total={cartTotal}
-            onChangeQuantity={handleChangeQuantity}
-            lastAdded={lastAdded}
-          />
-          <CheckoutSection
-            cartItems={cartItems}
-            cartTotal={cartTotal}
-            onLoginClick={() => setIsAuthOpen(true)}
-            onClearCart={handleClearCart}
-          />
         </section>
       </main>
 
@@ -246,8 +209,6 @@ export default function HomePageView() {
       </footer>
 
       {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
-
-      {/* Global toast notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
