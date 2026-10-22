@@ -5,8 +5,24 @@ import { isSupabaseConfigured, supabase } from '../supabase/client.js';
 
 const AuthContext = createContext(null);
 
+const BE_URL = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:5000';
+
+/** Lấy role của user từ BE API (không gọi Supabase trực tiếp) */
+async function fetchUserRole(userId) {
+  if (!userId) return 'customer';
+  try {
+    const res = await fetch(`${BE_URL}/api/users/profile/${userId}`);
+    if (!res.ok) return 'customer';
+    const json = await res.json();
+    return json.data?.role ?? 'customer';
+  } catch {
+    return 'customer';
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null); // null = chưa biết
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
   useEffect(() => {
@@ -15,13 +31,25 @@ export function AuthProvider({ children }) {
       return undefined;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data }) => {
+      const sessionUser = data.session?.user ?? null;
+      setUser(sessionUser);
+      if (sessionUser) {
+        const role = await fetchUserRole(sessionUser.id);
+        setUserRole(role);
+      }
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const sessionUser = session?.user ?? null;
+      setUser(sessionUser);
+      if (sessionUser) {
+        const role = await fetchUserRole(sessionUser.id);
+        setUserRole(role);
+      } else {
+        setUserRole(null);
+      }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -30,10 +58,16 @@ export function AuthProvider({ children }) {
   const signIn = async ({ email, password }) => {
     if (!isSupabaseConfigured) {
       setUser({ email, id: 'demo-user', user_metadata: { full_name: 'Demo User' } });
+      setUserRole('customer');
       return { error: null };
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (!error && data?.user) {
+      const role = await fetchUserRole(data.user.id);
+      setUserRole(role);
+      return { data, error: null, role };
+    }
     return { data, error };
   };
 
@@ -105,6 +139,8 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
+      userRole,
+      isAdmin: userRole === 'admin',
       loading,
       isSupabaseConfigured,
       signIn,
@@ -112,7 +148,7 @@ export function AuthProvider({ children }) {
       signOut,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, loading],
+    [user, userRole, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

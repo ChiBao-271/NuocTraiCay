@@ -8,7 +8,7 @@ import { ToastContainer } from '../../../components/Toast.jsx';
 import { useToast } from '../../../hooks/useToast.js';
 import { useCart } from '../../../contexts/CartContext.jsx';
 import { useAuth } from '../../../contexts/AuthContext.jsx';
-import { fetchProducts, formatCurrency } from '../../../services/productService.js';
+import { getProductById, formatCurrency } from '../../../services/productService.js';
 
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -24,10 +24,9 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     let mounted = true;
-    fetchProducts().then(({ data }) => {
+    getProductById(id).then(({ data }) => {
       if (!mounted) return;
-      const found = data.find((p) => p.id === id);
-      setProduct(found || null);
+      setProduct(data || null);
       setLoading(false);
     });
     return () => { mounted = false; };

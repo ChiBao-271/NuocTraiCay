@@ -4,19 +4,51 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '../components/Header.jsx';
 import { Hero } from '../components/Hero.jsx';
-import { AuthModal } from '../components/AuthModal.jsx';
 import { ToastContainer } from '../components/Toast.jsx';
 import { useToast } from '../hooks/useToast.js';
 import { useCart } from '../contexts/CartContext.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { fallbackProducts, fetchProducts, formatCurrency } from '../services/productService.js';
 
+const CATEGORY_PILLS = [
+  { id: 'all', label: 'Tất cả', icon: '🌿' },
+  { id: 'juice', label: 'Nước trái cây lạm', icon: '🍊' },
+  { id: 'fresh-fruit', label: 'Trái cây nhiệt đới', icon: '🍍' },
+  { id: 'fresh-fruit-berry', label: 'Dâu Tây & Việt Quất', icon: '🍓' },
+  { id: 'juice-green', label: 'Glow Green', icon: '🥦' },
+];
+
+const BADGE_COLORS = {
+  'Bán chạy': 'badge-orange',
+  'Mới': 'badge-green',
+  'BEST SELLER': 'badge-orange',
+  'CITRUS SEASON': 'badge-green',
+  'DẶNG NHIỆT ĐỚI': 'badge-red',
+  'SUPER DETOX': 'badge-blue',
+  'Ngọt dịu': 'badge-yellow',
+  'Tươi trong ngày': 'badge-green',
+  'Giá tốt': 'badge-orange',
+  'Mọng nước': 'badge-red',
+  'Tiết kiệm': 'badge-blue',
+  'Đặt nhóm': 'badge-blue',
+};
+
+function getBadgeClass(badge) {
+  if (!badge) return 'badge-orange';
+  const lower = badge.toLowerCase();
+  if (lower.includes('chạy') || lower.includes('best') || lower.includes('ngọt')) return 'badge-orange';
+  if (lower.includes('mới') || lower.includes('citrus') || lower.includes('tươi')) return 'badge-green';
+  if (lower.includes('nhiệt') || lower.includes('mọng')) return 'badge-red';
+  if (lower.includes('detox') || lower.includes('tiết') || lower.includes('nhóm')) return 'badge-blue';
+  return 'badge-orange';
+}
+
 export default function HomePageView() {
   const [products, setProducts] = useState(fallbackProducts);
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [activePill, setActivePill] = useState(0);
   const { toasts, addToast, removeToast } = useToast();
-  const { totalQuantity, addToCart } = useCart();
+  const { addToCart } = useCart();
   const { user } = useAuth();
   const router = useRouter();
 
@@ -30,11 +62,18 @@ export default function HomePageView() {
     return () => { mounted = false; };
   }, []);
 
-  const featuredProducts = products.slice(0, 4);
+  const activeCat = CATEGORY_PILLS[activePill]?.id ?? 'all';
+  const filteredProducts = activeCat === 'all'
+    ? products
+    : products.filter(p => p.category === activeCat.split('-')[0]);
+
+  const bestSellers = filteredProducts.slice(0, 4);
+  const freshFruits = filteredProducts.filter(p => p.category === 'fresh-fruit').slice(0, 4);
+  const displayFresh = freshFruits.length >= 2 ? freshFruits : filteredProducts.slice(0, 4);
 
   const handleAddToCart = (product) => {
     if (!user) {
-      setIsAuthOpen(true);
+      router.push('/login');
       addToast({ message: '🔒 Vui lòng đăng nhập để thêm vào giỏ hàng.', type: 'info', duration: 3000 });
       return;
     }
@@ -46,112 +85,48 @@ export default function HomePageView() {
     <div className="site-shell">
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
-      <Header onLoginClick={() => setIsAuthOpen(true)} />
+      <Header />
 
       <main>
-        <Hero
-          cartQuantity={totalQuantity}
-          onShopNow={() => router.push('/menu')}
-        />
+        {/* ── Hero ── */}
+        <Hero onShopNow={() => router.push('/menu')} />
 
-        {/* Quick navigation cards */}
-        <section className="section home-quicknav">
-          <div className="section-heading center-heading">
-            <span className="eyebrow">Khám phá</span>
-            <h2>Bắt đầu từ đây</h2>
+        {/* ── Khám Phá Hương Vị ── */}
+        <section className="section home-discover">
+          <div className="section-heading">
+            <h2>Khám Phá Hương Vị</h2>
+            <p>Lựa chọn các nhóm hương vị trái cây yêu thích của bạn</p>
           </div>
-          <div className="quicknav-grid">
-            <a href="/menu" className="quicknav-card quicknav-menu">
-              <span className="quicknav-icon">🧃</span>
-              <div>
-                <strong>Xem Menu</strong>
-                <small>Trái cây, nước ép & combo</small>
-              </div>
-              <span className="quicknav-arrow">→</span>
-            </a>
-            <a href="/cart" className="quicknav-card quicknav-cart">
-              <span className="quicknav-icon">🛒</span>
-              <div>
-                <strong>Giỏ hàng</strong>
-                <small>{totalQuantity > 0 ? `${totalQuantity} sản phẩm đang chờ` : 'Giỏ hàng trống'}</small>
-              </div>
-              <span className="quicknav-arrow">→</span>
-            </a>
-            <a href="/rewards" className="quicknav-card quicknav-rewards">
-              <span className="quicknav-icon">🎁</span>
-              <div>
-                <strong>Ưu đãi & Xu</strong>
-                <small>Flash sale, voucher mùa hè</small>
-              </div>
-              <span className="quicknav-arrow">→</span>
-            </a>
-            <a href="/account" className="quicknav-card quicknav-account">
-              <span className="quicknav-icon">👤</span>
-              <div>
-                <strong>Tài khoản</strong>
-                <small>{user ? 'Quản lý đơn hàng' : 'Đăng nhập / Đăng ký'}</small>
-              </div>
-              <span className="quicknav-arrow">→</span>
-            </a>
-          </div>
-        </section>
-
-        {/* Flash Deals section */}
-        <section className="section flash-deals-section">
-          <div className="flash-deals-header">
-            <div className="flash-title">
-              <h2>⚡ FLASH SALE <span style={{ fontSize: '1.5rem', fontWeight: 400 }}>| MÙA HÈ</span></h2>
-              <p>Chỉ còn vài giờ! Cơ hội săn deal sốc giảm đến 50%</p>
-            </div>
-            <div className="flash-timer">
-              <div className="timer-box"><strong>02</strong><small>Giờ</small></div>
-              <span style={{ fontSize: '1.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>:</span>
-              <div className="timer-box"><strong>45</strong><small>Phút</small></div>
-              <span style={{ fontSize: '1.8rem', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>:</span>
-              <div className="timer-box"><strong>12</strong><small>Giây</small></div>
-            </div>
-          </div>
-          
-          <div className="flash-grid">
-            {[
-              { id: 'apple-juice-01', name: 'Green Glow Detox', image: '🍏', oldPrice: 39000, newPrice: 19000, sold: 85 },
-              { id: 'mango-juice-01', name: 'Mango Sunrise', image: '🥭', oldPrice: 42000, newPrice: 21000, sold: 62 },
-              { id: 'banana-01', name: 'Ruby Guava Sparkle', image: '🍐', oldPrice: 69000, newPrice: 34500, sold: 90 },
-              { id: 'family-combo-01', name: 'Family Fresh Box', image: '🧺', oldPrice: 159000, newPrice: 99000, sold: 40 }
-            ].map(deal => (
-              <a href={`/product/${deal.id}`} className="flash-card" key={deal.id}>
-                <span className="flash-badge">-50%</span>
-                <div className="flash-image">{deal.image}</div>
-                <h3>{deal.name}</h3>
-                <div className="flash-prices">
-                  <span className="price-new">{formatCurrency(deal.newPrice)}</span>
-                  <span className="price-old">{formatCurrency(deal.oldPrice)}</span>
-                </div>
-                <div className="flash-progress">
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${deal.sold}%` }}></div>
-                  </div>
-                  <div className="progress-text">
-                    <span>Đã bán {deal.sold}%</span>
-                  </div>
-                </div>
-              </a>
+          <div className="category-pills">
+            {CATEGORY_PILLS.map((pill, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className={`category-pill ${activePill === idx ? 'pill-active' : ''}`}
+                onClick={() => setActivePill(idx)}
+                id={`category-pill-${idx}`}
+              >
+                <span>{pill.icon}</span>
+                {pill.label}
+              </button>
             ))}
           </div>
         </section>
 
-        {/* Featured products preview */}
-        <section className="section home-featured">
-          <div className="section-heading">
-            <span className="eyebrow">Nổi bật hôm nay</span>
-            <h2>Sản phẩm bán chạy</h2>
-            <p>Những lựa chọn được yêu thích nhất của cửa hàng.</p>
+        {/* ── Sản Phẩm Bán Chạy ── */}
+        <section className="section home-bestseller">
+          <div className="section-heading-row">
+            <div>
+              <h2>Sản Phẩm Bán Chạy 🔥</h2>
+              <p>Những ly nước ép tuyệt phẩm được lựa chọn nhiều nhất ngày hôm nay</p>
+            </div>
+            <a href="/menu" className="btn btn-ghost btn-sm" id="home-see-all-btn">Xem tất cả &rsaquo;</a>
           </div>
 
           {loadingProducts ? (
-            <div className="home-featured-grid">
+            <div className="home-product-grid">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="home-product-card skeleton-card">
+                <div key={i} className="hp-card skeleton-card">
                   <div className="skeleton-image" />
                   <div className="skeleton-content">
                     <div className="skeleton-line skeleton-line-short" />
@@ -162,31 +137,34 @@ export default function HomePageView() {
               ))}
             </div>
           ) : (
-            <div className="home-featured-grid">
-              {featuredProducts.map((product) => (
-                <article
-                  key={product.id}
-                  className="home-product-card"
-                  style={{ '--product-gradient': product.gradient, '--product-accent': product.accent }}
-                >
-                  <a href={`/product/${product.id}`} className="home-product-image" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-                    <span className="home-product-fruit">{product.image}</span>
-                    <span className="home-product-leaf">{product.fruit}</span>
+            <div className="home-product-grid">
+              {bestSellers.map((product) => (
+                <article key={product.id} className="hp-card">
+                  {product.badge && (
+                    <span className={`hp-badge ${getBadgeClass(product.badge)}`}>
+                      {product.badge.toUpperCase()}
+                    </span>
+                  )}
+                  <a href={`/product/${product.id}`} className="hp-img-wrap">
+                    <span className="hp-emoji">{product.image}</span>
+                    <span className="hp-emoji-sub">{product.fruit}</span>
                   </a>
-                  <div className="home-product-body">
-                    <span className="home-product-badge">{product.badge}</span>
-                    <a href={`/product/${product.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                      <h3>{product.name}</h3>
-                    </a>
-                    <p>{product.description}</p>
-                    <div className="home-product-footer">
-                      <strong>{formatCurrency(product.price)}<small>/{product.unit}</small></strong>
+                  <div className="hp-body">
+                    <a href={`/product/${product.id}`} className="hp-name">{product.name}</a>
+                    <p className="hp-desc">{product.description}</p>
+                    <div className="hp-footer">
+                      <div>
+                        <strong className="hp-price">{formatCurrency(product.price)}</strong>
+                        <small className="hp-unit">/{product.unit}</small>
+                      </div>
                       <button
-                        className="btn btn-primary"
+                        className="hp-add-btn"
                         type="button"
                         onClick={() => handleAddToCart(product)}
+                        id={`add-cart-hp-${product.id}`}
+                        aria-label={`Thêm ${product.name}`}
                       >
-                        + Thêm
+                        +
                       </button>
                     </div>
                   </div>
@@ -194,21 +172,183 @@ export default function HomePageView() {
               ))}
             </div>
           )}
+        </section>
 
-          <div className="home-see-all">
-            <a href="/menu" className="btn btn-ghost">
-              Xem tất cả sản phẩm →
-            </a>
+        {/* ── Trái Cây Tươi Hôm Nay ── */}
+        <section className="section home-fresh">
+          <div className="section-heading-row">
+            <div>
+              <h2>Trái Cây Tươi Hôm Nay 🔥</h2>
+              <p>Trái cây tươi ngon, được chọn lọc kỹ càng và cập nhật mỗi ngày</p>
+            </div>
+            <a href="/menu" className="btn btn-ghost btn-sm" id="home-fresh-see-all-btn">Xem tất cả &rsaquo;</a>
           </div>
+
+          {loadingProducts ? (
+            <div className="home-product-grid">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="hp-card skeleton-card">
+                  <div className="skeleton-image" />
+                  <div className="skeleton-content">
+                    <div className="skeleton-line skeleton-line-short" />
+                    <div className="skeleton-line" />
+                    <div className="skeleton-btn" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="home-product-grid">
+              {displayFresh.map((product) => (
+                <article key={product.id} className="hp-card">
+                  {product.badge && (
+                    <span className={`hp-badge ${getBadgeClass(product.badge)}`}>
+                      {product.badge.toUpperCase()}
+                    </span>
+                  )}
+                  <a href={`/product/${product.id}`} className="hp-img-wrap hp-img-wrap--fruit">
+                    <span className="hp-emoji">{product.image}</span>
+                    <span className="hp-emoji-sub">{product.fruit}</span>
+                  </a>
+                  <div className="hp-body">
+                    <a href={`/product/${product.id}`} className="hp-name">{product.name}</a>
+                    <p className="hp-desc">{product.description}</p>
+                    <div className="hp-footer">
+                      <div>
+                        <strong className="hp-price">{formatCurrency(product.price)}</strong>
+                        <small className="hp-unit">/{product.unit}</small>
+                      </div>
+                      <button
+                        className="hp-add-btn"
+                        type="button"
+                        onClick={() => handleAddToCart(product)}
+                        id={`add-cart-fresh-${product.id}`}
+                        aria-label={`Thêm ${product.name}`}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </main>
 
-      <footer className="footer">
-        <strong>FreshFruit Web Shop</strong>
-        <span>© 2026 - Website thương mại điện tử phong cách pastel.</span>
+      {/* ══════════════════════════════════════
+          FOOTER V2 — Premium redesign
+      ══════════════════════════════════════ */}
+      <footer className="footer-v2">
+
+        {/* Decorative ambient blobs */}
+        <div className="footer-blob footer-blob-a" aria-hidden="true" />
+        <div className="footer-blob footer-blob-b" aria-hidden="true" />
+
+        {/* CTA Strip — newsletter */}
+        <div className="footer-cta-strip">
+          <div className="footer-cta-text">
+            <span className="footer-cta-badge">🎁 Ưu đãi thành viên</span>
+            <h3>Nhận ngay <strong>voucher 20%</strong> cho lần đầu đặt hàng</h3>
+          </div>
+          <form className="footer-cta-form" onSubmit={e => e.preventDefault()}>
+            <input
+              type="email"
+              placeholder="Nhập email của bạn..."
+              className="footer-cta-input"
+              aria-label="Email nhận ưu đãi"
+            />
+            <button type="submit" className="footer-cta-btn">
+              Nhận ngay →
+            </button>
+          </form>
+        </div>
+
+        {/* Main columns */}
+        <div className="footer-v2-inner">
+
+          {/* Brand column */}
+          <div className="footer-brand-col">
+            <div className="footer-logo">
+              <span className="footer-logo-icon">🍊</span>
+              <div>
+                <strong>Original Fruits</strong>
+                <small>Juice shop &amp; rewards</small>
+              </div>
+            </div>
+            <p>Nước ép trái cây tươi nguyên chất 100% tự nhiên, ép lạnh trong ngày mang lại nguồn dinh dưỡng tinh khiết nhất cho bạn.</p>
+            <div className="footer-trust-badges">
+              <span className="footer-badge">🌿 100% Organic</span>
+              <span className="footer-badge">❄️ Ép lạnh</span>
+              <span className="footer-badge">🚚 Giao nhanh 2h</span>
+            </div>
+          </div>
+
+          {/* About links */}
+          <div className="footer-links-col">
+            <h4>Về Chúng Tôi</h4>
+            <ul>
+              <li><a href="/about">Câu chuyện thương hiệu</a></li>
+              <li><a href="/about#origin">Nguồn nguyên liệu</a></li>
+              <li><a href="/about#process">Quy trình ép lạnh</a></li>
+              <li><a href="/careers">Tuyển dụng</a></li>
+            </ul>
+          </div>
+
+          {/* Support links */}
+          <div className="footer-links-col">
+            <h4>Hỗ Trợ</h4>
+            <ul>
+              <li><a href="/shipping">Chính sách giao hàng</a></li>
+              <li><a href="/returns">Đổi trả &amp; Hoàn tiền</a></li>
+              <li><a href="/faq">Câu hỏi thường gặp</a></li>
+              <li><a href="/contact">Liên hệ hỗ trợ</a></li>
+            </ul>
+          </div>
+
+          {/* Social + Hotline */}
+          <div className="footer-social-col">
+            <h4>Kết Nối Với Chúng Tôi</h4>
+            <div className="footer-socials">
+              <a href="#" className="footer-social-btn" aria-label="Facebook">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+              </a>
+              <a href="#" className="footer-social-btn" aria-label="Instagram">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+              </a>
+              <a href="#" className="footer-social-btn" aria-label="YouTube">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              </a>
+              <a href="#" className="footer-social-btn" aria-label="TikTok">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.29 6.29 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.87a8.18 8.18 0 0 0 4.78 1.52V7.01a4.85 4.85 0 0 1-1.01-.32z"/></svg>
+              </a>
+            </div>
+            <div className="footer-hotline">
+              <span className="footer-hotline-icon">📞</span>
+              <div>
+                <small>Hotline hỗ trợ 7:00 – 22:00</small>
+                <strong>1900 - 2345</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="footer-v2-bottom">
+          <div className="footer-bottom-left">
+            <span>© 2026 Original Fruits.</span>
+            <span className="footer-made">Made with 🍊 in Vietnam</span>
+          </div>
+          <div className="footer-bottom-right">
+            <a href="/terms">Điều khoản dịch vụ</a>
+            <span className="footer-sep">·</span>
+            <a href="/privacy">Chính sách bảo mật</a>
+            <span className="footer-sep">·</span>
+            <a href="/cookies">Cookie</a>
+          </div>
+        </div>
       </footer>
 
-      {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );

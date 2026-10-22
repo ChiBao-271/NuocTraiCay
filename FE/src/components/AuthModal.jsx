@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../contexts/AuthContext.jsx';
 
 /** Animated fruit decoration for the modal hero area */
@@ -21,21 +22,23 @@ function AuthHeroArt({ mode }) {
 }
 
 /** Success state shown after login or register */
-function AuthSuccess({ mode, email, onClose }) {
+function AuthSuccess({ mode, email, onClose, isAdminLogin }) {
   return (
     <div className="auth-success-state">
       <AuthHeroArt mode="success" />
 
       <div className="auth-success-content">
         <span className="auth-success-badge">
-          {mode === 'login' ? '🎊 Chào mừng trở lại!' : '🌟 Tài khoản đã tạo!'}
+          {isAdminLogin ? '🔐 Đăng nhập Admin!' : mode === 'login' ? '🎊 Chào mừng trở lại!' : '🌟 Tài khoản đã tạo!'}
         </span>
         <h2 id="auth-title">
           {mode === 'login' ? 'Đăng nhập thành công' : 'Đăng ký thành công'}
         </h2>
         <p className="auth-success-email">{email}</p>
         <p className="auth-success-desc">
-          {mode === 'login'
+          {isAdminLogin
+            ? 'Đang chuyển đến trang quản trị...'
+            : mode === 'login'
             ? 'Bạn có thể bắt đầu khám phá và đặt hàng các sản phẩm yêu thích.'
             : 'Tài khoản đã được tạo. Hãy bắt đầu mua sắm trái cây tươi ngon!'}
         </p>
@@ -46,7 +49,7 @@ function AuthSuccess({ mode, email, onClose }) {
           onClick={onClose}
           id="auth-success-continue"
         >
-          {mode === 'login' ? '🛒 Khám phá sản phẩm' : '🚀 Bắt đầu mua sắm'}
+          {isAdminLogin ? '🔐 Vào trang Admin' : mode === 'login' ? '🛒 Khám phá sản phẩm' : '🚀 Bắt đầu mua sắm'}
         </button>
       </div>
     </div>
@@ -54,7 +57,8 @@ function AuthSuccess({ mode, email, onClose }) {
 }
 
 export function AuthModal({ onClose }) {
-  const { signIn, signUp, isSupabaseConfigured } = useAuth();
+  const { signIn, signUp, isSupabaseConfigured, isAdmin } = useAuth();
+  const router = useRouter();
   const [mode, setMode] = useState('login');
   const [formData, setFormData] = useState({ fullName: '', email: '', password: '' });
   const [status, setStatus] = useState('');
@@ -63,6 +67,7 @@ export function AuthModal({ onClose }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMode, setSuccessMode] = useState('login');
   const [showPassword, setShowPassword] = useState(false);
+  const [loginRole, setLoginRole] = useState(null); // role ngay sau khi login
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -82,7 +87,9 @@ export function AuthModal({ onClose }) {
     setStatus('');
 
     const action = mode === 'login' ? signIn : signUp;
-    const { error, needsConfirmation } = await action(formData);
+    const result = await action(formData);
+    const { error, needsConfirmation } = result;
+    const resolvedRole = result.role ?? null; // role trả về từ signIn
 
     setSubmitting(false);
 
@@ -105,12 +112,18 @@ export function AuthModal({ onClose }) {
       return;
     }
 
-    // Show success state
+    // Lưu role và hiện success
+    setLoginRole(resolvedRole);
     setSuccessMode(mode);
     setShowSuccess(true);
 
-    // Auto-close after 2.5 seconds
-    window.setTimeout(onClose, 2500);
+    // Redirect sau 2 giây
+    const redirectDelay = window.setTimeout(() => {
+      onClose();
+      if (mode === 'login' && resolvedRole === 'admin') {
+        router.push('/admin');
+      }
+    }, 2000);
   };
 
   if (showSuccess) {
@@ -130,6 +143,7 @@ export function AuthModal({ onClose }) {
             mode={successMode}
             email={formData.email}
             onClose={onClose}
+            isAdminLogin={loginRole === 'admin'}
           />
         </section>
       </div>

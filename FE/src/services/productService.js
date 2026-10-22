@@ -1,6 +1,24 @@
-import { isSupabaseConfigured, supabase } from '../supabase/client.js';
+// ─────────────────────────────────────────────────────────────
+//  FE API client — mọi request đều đi qua BE, không gọi Supabase
+// ─────────────────────────────────────────────────────────────
+const BE_URL = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:5000';
 
-export const products = [
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${BE_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) {
+    throw new Error(json.error || `API error ${res.status}`);
+  }
+  return json.data;
+}
+
+// ──────────────────────────────────────────────────────
+//  Dữ liệu tĩnh fallback (hiển thị khi BE chưa kết nối)
+// ──────────────────────────────────────────────────────
+export const fallbackProducts = [
   {
     id: 'orange-juice-01',
     name: 'Citrus Punch',
@@ -107,8 +125,6 @@ export const products = [
   },
 ];
 
-export const fallbackProducts = products;
-
 export const categories = [
   { id: 'all', name: 'Tất cả', icon: '✨' },
   { id: 'fresh-fruit', name: 'Trái cây tươi', icon: '🍓' },
@@ -116,172 +132,96 @@ export const categories = [
   { id: 'combo', name: 'Combo tiện lợi', icon: '🎁' },
 ];
 
-const categorySlugMap = {
-  'trai-cay-tuoi': 'fresh-fruit',
-  'nuoc-ep-nguyen-chat': 'juice',
-  'sinh-to-smoothie': 'juice',
-  combo: 'combo',
-};
+// ──────────────────────────────────────────────────────
+//  fetchProducts — gọi BE API, fallback local nếu lỗi
+// ──────────────────────────────────────────────────────
+export async function fetchProducts(params = {}) {
+  try {
+    const query = new URLSearchParams();
+    if (params.category && params.category !== 'all') query.set('category', params.category);
+    if (params.search) query.set('search', params.search);
+    const queryString = query.toString() ? `?${query.toString()}` : '';
 
-function mapCategorySlug(slug = '') {
-  if (categorySlugMap[slug]) return categorySlugMap[slug];
-  if (slug.includes('nuoc-ep') || slug.includes('sinh-to') || slug.includes('smoothie')) return 'juice';
-  if (slug.includes('combo') || slug.includes('hop-qua') || slug.includes('set')) return 'combo';
-  return 'fresh-fruit';
-}
-
-function getProductVisuals(productName = '', category = 'fresh-fruit') {
-  const lowerName = productName.toLowerCase();
-
-  if (lowerName.includes('dưa') || lowerName.includes('dua')) {
-    return { image: '🍉', fruit: '🌿', accent: '#6fdc7b' };
-  }
-
-  if (lowerName.includes('bưởi') || lowerName.includes('buoi')) {
-    return { image: '🍈', fruit: '🍃', accent: '#b8e879' };
-  }
-
-  if (lowerName.includes('nho')) {
-    return { image: '🍇', fruit: '🌿', accent: '#a98bff' };
-  }
-
-  if (lowerName.includes('cam') || lowerName.includes('quýt') || lowerName.includes('chanh')) {
-    return { image: '🍊', fruit: '🍋', accent: '#ffb55e' };
-  }
-
-  if (lowerName.includes('xoài') || lowerName.includes('xoai')) {
-    return { image: '🥭', fruit: '🍍', accent: '#ffc465' };
-  }
-
-  if (lowerName.includes('dâu') || lowerName.includes('dau')) {
-    return { image: '🍓', fruit: '🌿', accent: '#ff7d7d' };
-  }
-
-  if (category === 'juice') {
-    return { image: '🧃', fruit: '🍊', accent: '#ffb55e' };
-  }
-
-  if (category === 'combo') {
-    return { image: '🧺', fruit: '🍇', accent: '#ffe087' };
-  }
-
-  return { image: '🍏', fruit: '🍃', accent: '#9ee88f' };
-}
-
-function buildGradient(accent) {
-  return `linear-gradient(155deg, #fffdf1 0%, #f0ffd9 45%, ${accent} 100%)`;
-}
-
-function mapDatabaseProduct(product, categoryById) {
-  const categoryRecord = categoryById.get(product.category_id);
-  const category = mapCategorySlug(categoryRecord?.slug);
-  const visuals = getProductVisuals(product.name, category);
-  const description = product.description
-    || [product.origin, product.farming_standard].filter(Boolean).join(' · ')
-    || 'Sản phẩm tươi được đồng bộ từ Supabase.';
-
-  return {
-    id: product.id,
-    name: product.name,
-    category,
-    price: Number(product.price ?? 0),
-    unit: category === 'juice' ? 'chai' : 'kg',
-    badge: product.is_bestseller ? 'Bán chạy' : product.farming_standard || categoryRecord?.name || 'Tươi mới',
-    image: visuals.image,
-    fruit: visuals.fruit,
-    accent: visuals.accent,
-    gradient: buildGradient(visuals.accent),
-    description,
-    imageUrl: product.image_url,
-    rating: product.rating_avg,
-    stockQuantity: product.stock_quantity,
-  };
-}
-
-export async function fetchProducts() {
-  if (!isSupabaseConfigured) {
-    return { data: fallbackProducts, error: null, source: 'local' };
-  }
-
-  const { data: categoryRows } = await supabase
-    .from('categories')
-    .select('id,name,slug')
-    .eq('is_active', true);
-
-  const categoryById = new Map((categoryRows || []).map((category) => [category.id, category]));
-
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('is_available', true)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    return { data: fallbackProducts, error, source: 'fallback' };
-  }
-
-  const mappedProducts = (data || []).map((product) => mapDatabaseProduct(product, categoryById));
-
-  return { data: mappedProducts.length ? mappedProducts : fallbackProducts, error: null, source: 'supabase' };
-}
-
-export async function createOrder({ customer, items, total, note, userId }) {
-  if (!isSupabaseConfigured) {
-    return { data: null, error: new Error('Supabase chưa được cấu hình.') };
-  }
-
-  const { data: session } = await supabase.auth.getSession();
-  const currentUserId = session?.session?.user?.id;
-
-  // Insert order với đúng tên cột từ schema Supabase
-  const { data: orderData, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      user_id: currentUserId,
-      recipient_name: customer.fullName,
-      recipient_phone: customer.phone,
-      shipping_address: customer.address,
-      note: customer.note || note || null,
-      subtotal: total,
-      total_amount: total,
-      shipping_fee: 0,
-      discount_amount: 0,
-      coins_used: 0,
-      coins_earned: 0,
-      order_status: 'pending',
-      payment_method: 'cod',
-      payment_status: 'unpaid',
-    })
-    .select('id, order_code, total_amount, order_status, created_at')
-    .single();
-
-  if (orderError) {
-    return { data: null, error: orderError };
-  }
-
-  // Insert order_items với đúng tên cột
-  if (orderData?.id && items?.length > 0) {
-    const { error: itemsError } = await supabase.from('order_items').insert(
-      items.map((item) => ({
-        order_id: orderData.id,
-        product_id: item.id,
-        product_name: item.name,
-        unit_price: item.price,
-        quantity: item.quantity,
-        item_subtotal: item.price * item.quantity,
-      }))
-    );
-    if (itemsError) {
-      console.warn('order_items insert error (non-critical):', itemsError.message);
+    const data = await apiFetch(`/api/products${queryString}`);
+    return { data: data.length ? data : fallbackProducts, error: null, source: 'api' };
+  } catch (error) {
+    console.warn('[FE] fetchProducts fallback:', error.message);
+    let result = fallbackProducts;
+    if (params.category && params.category !== 'all') {
+      result = result.filter((p) => p.category === params.category);
     }
+    if (params.search) {
+      const s = params.search.toLowerCase();
+      result = result.filter((p) => p.name.toLowerCase().includes(s) || (p.description && p.description.toLowerCase().includes(s)));
+    }
+    return { data: result, error, source: 'fallback' };
   }
-
-  return { data: orderData, error: null };
 }
 
+// ──────────────────────────────────────────────────────
+//  getProductById — lấy chi tiết sản phẩm theo ID
+// ──────────────────────────────────────────────────────
+export async function getProductById(id) {
+  try {
+    const data = await apiFetch(`/api/products/${id}`);
+    return { data, error: null, source: 'api' };
+  } catch (error) {
+    console.warn('[FE] getProductById fallback:', error.message);
+    const found = fallbackProducts.find((p) => p.id === id);
+    return { data: found || null, error, source: 'fallback' };
+  }
+}
+
+// ──────────────────────────────────────────────────────
+//  createOrder — gọi BE API
+// ──────────────────────────────────────────────────────
+export async function createOrder({ customer, items, total, note, userId }) {
+  try {
+    const data = await apiFetch('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify({ customer, items, total, note, userId }),
+    });
+    return { data, error: null };
+  } catch (error) {
+    console.error('[FE] createOrder error:', error.message);
+    return { data: null, error };
+  }
+}
+
+// ──────────────────────────────────────────────────────
+//  getUserProfile — lấy profile + role từ BE
+// ──────────────────────────────────────────────────────
+export async function getUserProfile(userId) {
+  try {
+    const data = await apiFetch(`/api/users/profile/${userId}`);
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+
+// ──────────────────────────────────────────────────────
+//  fetchAdminDashboard — gọi BE API
+// ──────────────────────────────────────────────────────
+export async function fetchAdminDashboard() {
+  try {
+    const data = await apiFetch('/api/admin/dashboard');
+    return { data, error: null };
+  } catch (error) {
+    console.error('[FE] fetchAdminDashboard error:', error.message);
+    return { data: null, error };
+  }
+}
+
+// ──────────────────────────────────────────────────────
+//  Utility
+// ──────────────────────────────────────────────────────
 export function formatCurrency(value) {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND',
   }).format(value);
 }
+
+// giữ lại export cũ để tránh lỗi import ở các file khác
+export const products = fallbackProducts;

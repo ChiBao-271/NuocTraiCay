@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '../../components/Header.jsx';
-import { AuthModal } from '../../components/AuthModal.jsx';
 import { useCart } from '../../contexts/CartContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { formatCurrency } from '../../services/productService.js';
@@ -11,7 +10,6 @@ import { formatCurrency } from '../../services/productService.js';
 export default function CartPage() {
   const { cartItems, cartTotal, changeQuantity, removeFromCart, clearCart, totalQuantity } = useCart();
   const { user } = useAuth();
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [voucher, setVoucher] = useState('');
   const [voucherApplied, setVoucherApplied] = useState(false);
   const router = useRouter();
@@ -30,7 +28,7 @@ export default function CartPage() {
 
   const handleCheckout = () => {
     if (!user) {
-      setIsAuthOpen(true);
+      router.push('/login');
       return;
     }
     router.push('/checkout');
@@ -40,7 +38,7 @@ export default function CartPage() {
     <div className="site-shell page-shell">
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
-      <Header onLoginClick={() => setIsAuthOpen(true)} />
+      <Header />
 
       <main className="page-main cart-page-layout">
         <div className="cart-page-heading">
@@ -194,8 +192,6 @@ export default function CartPage() {
         <strong>FreshFruit Web Shop</strong>
         <span>© 2026</span>
       </footer>
-
-      {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
     </div>
   );
 }
