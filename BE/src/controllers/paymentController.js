@@ -27,6 +27,9 @@ export async function createSePayCheckout(req, res) {
     try { getSePayCheckoutConfig(); }
     catch (error) {
       console.error('[BE] SePay checkout configuration error:', error.message);
+      if (String(error.message).startsWith('SEPAY_CREDENTIAL_ENV_MISMATCH:')) {
+        return res.status(503).json({ success: false, code: 'SEPAY_CREDENTIAL_ENV_MISMATCH', error: 'Render đang để chế độ Sandbox nhưng Merchant ID có vẻ là Live/Production. Hãy dùng cặp credentials Sandbox của Cổng thanh toán SePay.' });
+      }
       return res.status(503).json({ success: false, code: 'SEPAY_NOT_CONFIGURED', error: 'SePay chưa được cấu hình đầy đủ trên backend.' });
     }
     const order = await orderService.createOrder({
@@ -41,10 +44,13 @@ export async function createSePayCheckout(req, res) {
     const migration = message.startsWith('ORDER_MIGRATION_REQUIRED:');
     const clientError = /INVALID_|PRODUCT_UNAVAILABLE|INSUFFICIENT_STOCK|VOUCHER|DUPLICATE_|UNSUPPORTED_PAYMENT|ORDER_TOTAL_TOO_LARGE/i.test(message);
     const configuration = /Missing .* backend configuration|SEPAY_ENV must/i.test(message);
+    const credentialEnvironmentMismatch = message.startsWith('SEPAY_CREDENTIAL_ENV_MISMATCH:');
     const dbSetup = /payment migration|payment_provider|orders_payment_method_check|check constraint/i.test(message);
-    const statusCode = migration || configuration || dbSetup ? 503 : clientError ? 400 : 500;
+    const statusCode = migration || configuration || dbSetup || credentialEnvironmentMismatch ? 503 : clientError ? 400 : 500;
     const error = migration
       ? 'Chưa áp dụng migration tạo đơn mới nhất trên Supabase.'
+      : credentialEnvironmentMismatch
+        ? 'Render đang để chế độ Sandbox nhưng Merchant ID có vẻ là Live/Production. Hãy dùng cặp credentials Sandbox của Cổng thanh toán SePay.'
       : configuration
         ? 'SePay chưa được cấu hình đầy đủ trong BE/.env.'
         : dbSetup

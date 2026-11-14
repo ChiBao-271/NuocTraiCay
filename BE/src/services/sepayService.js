@@ -14,8 +14,14 @@ function requiredEnv(name) {
 function getSePayEnvironment() {
   const env = config.sepayEnv || 'sandbox';
   if (!['sandbox','production'].includes(env)) throw new Error('SEPAY_ENV must be sandbox or production.');
+  const merchantId = requiredEnv('sepayMerchantId').trim();
+  // Prevent a common silent integration failure: Live merchant credentials
+  // posted to the Sandbox checkout host (or vice versa). Never log the key.
+  if (env === 'sandbox' && /-LIVE-/i.test(merchantId)) {
+    throw new Error('SEPAY_CREDENTIAL_ENV_MISMATCH: Live merchant ID configured for sandbox checkout.');
+  }
   return {
-    merchantId: requiredEnv('sepayMerchantId'),
+    merchantId,
     secret: requiredEnv('sepaySecretKey'),
     checkoutUrl: env === 'production' ? 'https://pay.sepay.vn/v1/checkout/init' : 'https://pay-sandbox.sepay.vn/v1/checkout/init',
     frontendUrl: requiredEnv('frontendUrl').replace(/\/$/, ''),
