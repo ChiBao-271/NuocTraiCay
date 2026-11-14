@@ -1,16 +1,36 @@
 // ─────────────────────────────────────────────────────────────
 //  FE API client — mọi request đều đi qua BE, không gọi Supabase
 // ─────────────────────────────────────────────────────────────
+import { supabase } from '../supabase/client.js';
+
 const BE_URL = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:5000';
 
 async function apiFetch(path, options = {}) {
+  // Public catalog requests should not wait for Supabase session recovery.
+  const needsAuth = path.startsWith('/api/orders') || path.startsWith('/api/payments') || path.startsWith('/api/admin') || path.startsWith('/api/users');
+  let accessToken;
+  if (needsAuth && supabase) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    accessToken = sessionData?.session?.access_token;
+  }
+  const headers = { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) };
   const res = await fetch(`${BE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
+    signal: AbortSignal.timeout(needsAuth ? 20000 : 10000),
     ...options,
+    headers: { ...headers, ...options.headers },
   });
   const json = await res.json();
   if (!res.ok || !json.success) {
-    throw new Error(json.error || `API error ${res.status}`);
+    const details = Array.isArray(json.errors) ? json.errors.filter((item) => typeof item === 'string' && item.trim()) : [];
+    const message = details.length
+      ? details.join(' ')
+      : json.error || `API error ${res.status}`;
+    const error = new Error(message);
+    error.status = res.status;
+    error.code = json.code || (json.error === 'ORDER_TOTAL_CHANGED' ? 'ORDER_TOTAL_CHANGED' : undefined);
+    error.recalculated_total = json.recalculated_total ?? (json.error?.match?.(/ORDER_TOTAL_CHANGED:(\d+)/)?.[1] ? Number(json.error.match(/ORDER_TOTAL_CHANGED:(\d+)/)[1]) : undefined);
+    throw error;
   }
   return json.data;
 }
@@ -129,6 +149,7 @@ export const categories = [
   { id: 'all', name: 'Tất cả', icon: '✨' },
   { id: 'fresh-fruit', name: 'Trái cây tươi', icon: '🍓' },
   { id: 'juice', name: 'Nước ép', icon: '🧃' },
+  { id: 'smoothie', name: 'Sinh tố', icon: '🥤' },
   { id: 'combo', name: 'Combo tiện lợi', icon: '🎁' },
 ];
 
@@ -143,18 +164,17 @@ export async function fetchProducts(params = {}) {
     const queryString = query.toString() ? `?${query.toString()}` : '';
 
     const data = await apiFetch(`/api/products${queryString}`);
-    return { data: data.length ? data : fallbackProducts, error: null, source: 'api' };
+    const liveProducts = Array.isArray(data) ? data : data?.data;
+    if (!Array.isArray(liveProducts)) throw new Error('API trả dữ liệu sản phẩm không hợp lệ.');
+    if (liveProducts.length) return { data: liveProducts, error: null, source: 'api' };
+    let result = fallbackProducts;
+    if (params.category && params.category !== 'all') result = result.filter((p) => p.category === params.category);
+    return { data: result, error: null, source: 'empty-db' };
   } catch (error) {
     console.warn('[FE] fetchProducts fallback:', error.message);
-    let result = fallbackProducts;
-    if (params.category && params.category !== 'all') {
-      result = result.filter((p) => p.category === params.category);
-    }
-    if (params.search) {
-      const s = params.search.toLowerCase();
-      result = result.filter((p) => p.name.toLowerCase().includes(s) || (p.description && p.description.toLowerCase().includes(s)));
-    }
-    return { data: result, error, source: 'fallback' };
+    // Demo/fallback items have no live Supabase UUIDs, so never expose them as
+    // buyable catalog data when the database/API is unavailable.
+    return { data: [], error, source: 'unavailable' };
   }
 }
 
@@ -167,25 +187,62 @@ export async function getProductById(id) {
     return { data, error: null, source: 'api' };
   } catch (error) {
     console.warn('[FE] getProductById fallback:', error.message);
-    const found = fallbackProducts.find((p) => p.id === id);
-    return { data: found || null, error, source: 'fallback' };
+    return { data: null, error, source: 'unavailable' };
   }
 }
 
 // ──────────────────────────────────────────────────────
 //  createOrder — gọi BE API
 // ──────────────────────────────────────────────────────
-export async function createOrder({ customer, items, total, note, userId }) {
+export async function createOrder({ customer, items, total, note, userId, voucherCode }) {
   try {
     const data = await apiFetch('/api/orders', {
       method: 'POST',
-      body: JSON.stringify({ customer, items, total, note, userId }),
+      body: JSON.stringify({ customer, items, total, note, userId, voucherCode }),
     });
     return { data, error: null };
   } catch (error) {
-    console.error('[FE] createOrder error:', error.message);
+    if (error.status !== 409 && error.code !== 'ORDER_TOTAL_CHANGED') console.error('[FE] createOrder error:', error.message);
     return { data: null, error };
   }
+}
+
+export async function createSePayCheckout({ customer, items, total, note, voucherCode }) {
+  try {
+    const data = await apiFetch('/api/payments/sepay/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ customer, items, total, note, voucherCode }),
+    });
+    return { data, error: null };
+  } catch (error) {
+    if (error.status !== 409 && error.code !== 'ORDER_TOTAL_CHANGED') console.error('[FE] createSePayCheckout error:', error.message);
+    return { data: null, error };
+  }
+}
+
+// ──────────────────────────────────────────────────────
+//  fetchUserOrders — đơn hàng đã xác thực của người dùng
+// ──────────────────────────────────────────────────────
+export async function fetchUserOrders(userId, { page = 1, limit = 10, status = 'all' } = {}) {
+  try {
+    const query = new URLSearchParams({ page: String(page), limit: String(limit), status });
+    const data = await apiFetch(`/api/orders/user/${encodeURIComponent(userId)}?${query}`);
+    return { data: data.data || [], total: data.total || 0, page: data.page || page, totalPages: data.totalPages || 0, error: null };
+  } catch (error) {
+    return { data: [], total: 0, page, totalPages: 0, error };
+  }
+}
+
+export async function fetchOrderDetails(orderId) {
+  try { return { data: await apiFetch(`/api/orders/${encodeURIComponent(orderId)}`), error: null }; }
+  catch (error) { return { data: null, error }; }
+}
+
+export async function cancelUserOrder(orderId) {
+  try {
+    const data = await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'PATCH', body: JSON.stringify({}) });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
 }
 
 // ──────────────────────────────────────────────────────
@@ -211,6 +268,52 @@ export async function fetchAdminDashboard() {
     console.error('[FE] fetchAdminDashboard error:', error.message);
     return { data: null, error };
   }
+}
+
+export async function fetchAdminOrders({ page = 1, limit = 20, status = 'all' } = {}) {
+  try {
+    const query = new URLSearchParams({ page: String(page), limit: String(limit), status });
+    const result = await apiFetch(`/api/admin/orders?${query}`);
+    return { data: result.data || [], total: result.total || 0, error: null };
+  } catch (error) { return { data: [], total: 0, error }; }
+}
+
+export async function updateAdminOrderStatus(orderId, order_status) {
+  try {
+    const data = await apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}`, { method: 'PATCH', body: JSON.stringify({ order_status }) });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
+export async function fetchAdminProducts({ page = 1, limit = 20, status = 'all', category = 'all' } = {}) {
+  try {
+    const query = new URLSearchParams({ page: String(page), limit: String(limit), status, category });
+    const result = await apiFetch(`/api/admin/products?${query}`);
+    return { data: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0, error: null };
+  } catch (error) { return { data: [], total: 0, totalPages: 0, error }; }
+}
+
+export async function fetchAdminCategories() {
+  try {
+    const result = await apiFetch('/api/admin/categories');
+    return { data: result || [], error: null };
+  } catch (error) { return { data: [], error }; }
+}
+
+export async function saveAdminProduct(product, originalId = null) {
+  try {
+    const isUpdate = Boolean(originalId);
+    const path = isUpdate ? `/api/admin/products/${encodeURIComponent(originalId)}` : '/api/admin/products';
+    const data = await apiFetch(path, { method: isUpdate ? 'PATCH' : 'POST', body: JSON.stringify(product) });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
+export async function archiveAdminProduct(productId) {
+  try {
+    const data = await apiFetch(`/api/admin/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
 }
 
 // ──────────────────────────────────────────────────────

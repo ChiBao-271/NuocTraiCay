@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -8,6 +8,12 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 export default function LoginPage() {
   const { signIn, isSupabaseConfigured } = useAuth();
   const router = useRouter();
+  const [nextPath, setNextPath] = useState('/');
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('next');
+    if (requested && requested.startsWith('/') && !requested.startsWith('//')) setNextPath(requested);
+  }, []);
 
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [remember, setRemember] = useState(false);
@@ -40,7 +46,9 @@ export default function LoginPage() {
     }
 
     // Redirect theo role
-    if (result.role === 'admin') {
+    if (nextPath !== '/') {
+      router.replace(nextPath);
+    } else if (result.role === 'admin') {
       router.push('/admin');
     } else {
       router.push('/');
@@ -53,8 +61,8 @@ export default function LoginPage() {
       <div className="auth-hero" style={{ backgroundImage: 'url(/login-hero.jpg)' }}>
         {/* Brand badge */}
         <div className="auth-hero-brand">
-          <span className="auth-hero-brand-icon">O</span>
-          <span>Original Fruits</span>
+          <span className="auth-hero-brand-mark" aria-hidden="true">OF</span>
+          <span className="auth-hero-brand-name">Original Fruits</span>
         </div>
 
         {/* Bottom text */}
@@ -74,7 +82,7 @@ export default function LoginPage() {
         </Link>
         <div className="auth-form-box">
           <div className="auth-form-header">
-            <h1>Welcome Back!</h1>
+            <h1>Chào mừng trở lại!</h1>
             <p>Đăng nhập để nhận ly nước ép mát lạnh mỗi sáng của bạn.</p>
           </div>
 

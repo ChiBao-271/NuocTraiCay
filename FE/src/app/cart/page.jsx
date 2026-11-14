@@ -5,32 +5,56 @@ import { useRouter } from 'next/navigation';
 import { Header } from '../../components/Header.jsx';
 import { useCart } from '../../contexts/CartContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import Link from 'next/link';
 import { formatCurrency } from '../../services/productService.js';
 
 export default function CartPage() {
-  const { cartItems, cartTotal, changeQuantity, removeFromCart, clearCart, totalQuantity } = useCart();
+  const { cartItems, cartTotal, changeQuantity, removeFromCart, clearCart, totalQuantity, appliedVoucher, applyVoucher, removeVoucher, replaceCartItems } = useCart();
   const { user } = useAuth();
   const [voucher, setVoucher] = useState('');
-  const [voucherApplied, setVoucherApplied] = useState(false);
+  const [voucherError, setVoucherError] = useState('');
   const router = useRouter();
 
-  const SHIPPING_FEE = cartTotal >= 200000 ? 0 : 20000;
-  const discount = voucherApplied ? Math.round(cartTotal * 0.1) : 0;
+  const baseShipping = cartTotal >= 200000 ? 0 : 20000;
+  const SHIPPING_FEE = Math.max(0, baseShipping - (appliedVoucher?.type === 'shipping' ? Math.min(baseShipping, appliedVoucher.value) : 0));
+  const discount = appliedVoucher?.type === 'percent' ? Math.round(cartTotal * appliedVoucher.value / 100) : 0;
+  const voucherShippingDiscount = baseShipping - SHIPPING_FEE;
   const finalTotal = cartTotal + SHIPPING_FEE - discount;
 
   const handleApplyVoucher = () => {
-    if (voucher.toUpperCase() === 'FREESHIP30' || voucher.toUpperCase() === 'FRESH10') {
-      setVoucherApplied(true);
+    const code = voucher.trim().toUpperCase();
+    const vouchers = { FRESH10: { code, type: 'percent', value: 10 }, FREESHIP30: { code, type: 'shipping', value: 30000 } };
+    if (vouchers[code]) {
+      applyVoucher(vouchers[code]);
+      setVoucher(code);
+      setVoucherError('');
     } else {
-      alert('Mã voucher không hợp lệ. Thử: FRESH10 hoặc FREESHIP30');
+      setVoucherError('Mã voucher không hợp lệ. Thử FRESH10 hoặc FREESHIP30.');
     }
+  };
+
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMessage, setReconcileMessage] = useState('');
+  const handleRefreshCart = async () => {
+    setReconciling(true); setReconcileMessage('');
+    try {
+      const refreshed = await Promise.all(cartItems.map(async (item) => {
+        const { getProductById } = await import('../../services/productService.js');
+        const result = await getProductById(item.id);
+        return result?.data ? { ...item, ...result.data, quantity: item.quantity } : item;
+      }));
+      replaceCartItems(refreshed);
+      setReconcileMessage('Giá và tồn kho đã được làm mới từ catalog hiện tại.');
+    } finally { setReconciling(false); }
   };
 
   const handleCheckout = () => {
     if (!user) {
-      router.push('/login');
+      try { if (appliedVoucher) sessionStorage.setItem('checkout_voucher', appliedVoucher.code); } catch { /* session storage unavailable */ }
+      router.push('/login?next=/checkout');
       return;
     }
+    try { if (appliedVoucher) sessionStorage.setItem('checkout_voucher', appliedVoucher.code); } catch { /* session storage unavailable */ }
     router.push('/checkout');
   };
 
@@ -57,9 +81,9 @@ export default function CartPage() {
               <span style={{ fontSize: '4rem' }}>🛒</span>
               <h2>Giỏ hàng trống</h2>
               <p>Bạn chưa thêm sản phẩm nào. Hãy khám phá menu!</p>
-              <a href="/menu" className="btn btn-primary" style={{ marginTop: '1rem' }}>
+              <Link href="/menu" className="btn btn-primary" style={{ marginTop: '1rem' }}>
                 Xem Menu
-              </a>
+              </Link>
             </div>
           </div>
         ) : (
@@ -132,15 +156,16 @@ export default function CartPage() {
                 </div>
                 {SHIPPING_FEE > 0 && (
                   <p className="cart-shipping-hint">
-                    Mua thêm {formatCurrency(200000 - cartTotal)} để được miễn phí ship!
+                    {cartTotal < 200000 && <>Mua thêm {formatCurrency(200000 - cartTotal)} để được miễn phí ship!</>}
                   </p>
                 )}
-                {voucherApplied && (
+                {appliedVoucher?.type === 'percent' && discount > 0 && (
                   <div className="cart-summary-row text-green">
-                    <span>Giảm giá (voucher)</span>
+                    <span>Giảm giá ({appliedVoucher?.code})</span>
                     <span>-{formatCurrency(discount)}</span>
                   </div>
                 )}
+                {appliedVoucher?.type === 'shipping' && voucherShippingDiscount > 0 && <div className="cart-summary-row text-green"><span>Giảm phí vận chuyển ({appliedVoucher.code})</span><span>-{formatCurrency(voucherShippingDiscount)}</span></div>}
               </div>
 
               {/* Voucher input */}
@@ -150,24 +175,28 @@ export default function CartPage() {
                   type="text"
                   placeholder="Nhập mã voucher"
                   value={voucher}
-                  onChange={(e) => setVoucher(e.target.value)}
-                  disabled={voucherApplied}
+                  onChange={(e) => { setVoucher(e.target.value); setVoucherError(''); }}
+                  disabled={Boolean(appliedVoucher)}
                   className="voucher-input"
                 />
                 <button
                   className="btn btn-primary"
                   type="button"
                   onClick={handleApplyVoucher}
-                  disabled={voucherApplied || !voucher}
+                  disabled={Boolean(appliedVoucher) || !voucher}
                 >
-                  {voucherApplied ? '✓' : 'Áp dụng'}
+                  {appliedVoucher ? '✓' : 'Áp dụng'}
                 </button>
               </div>
+              {voucherError && <p className="form-status form-status-error" role="alert">{voucherError}</p>}
+              {appliedVoucher && <p className="form-status form-status-success" role="status">Đã áp dụng {appliedVoucher.code}. <button className="text-button" type="button" onClick={() => { removeVoucher(); setVoucher(''); }}>Gỡ mã</button></p>}
 
               <div className="cart-total-row">
                 <span>Tổng cộng</span>
                 <strong>{formatCurrency(finalTotal)}</strong>
               </div>
+              <button className="btn btn-ghost full-width" type="button" disabled={reconciling || cartItems.length === 0} onClick={handleRefreshCart}>{reconciling ? 'Đang đồng bộ giá…' : 'Đồng bộ giá và tồn kho'}</button>
+              {reconcileMessage && <p className="form-status form-status-success" role="status">{reconcileMessage}</p>}
 
               <button
                 className="btn btn-primary full-width checkout-glow"
@@ -180,9 +209,9 @@ export default function CartPage() {
                   : '🔒 Đăng nhập để đặt hàng'}
               </button>
 
-              <a href="/menu" className="btn btn-ghost full-width" style={{ marginTop: '0.75rem' }}>
+              <Link href="/menu" className="btn btn-ghost full-width" style={{ marginTop: '0.75rem' }}>
                 ← Tiếp tục mua sắm
-              </a>
+              </Link>
             </section>
           </div>
         )}

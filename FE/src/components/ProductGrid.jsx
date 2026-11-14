@@ -2,21 +2,18 @@
 
 import { useCallback, useState } from 'react';
 import { formatCurrency } from '../services/productService.js';
-import { useAuth } from '../contexts/AuthContext.jsx';
+import { useCart } from '../contexts/CartContext.jsx';
+import Link from 'next/link';
 
 /** Individual product card with add-to-cart feedback animation */
 function ProductCard({ product, onAddToCart, onLoginRequired }) {
-  const { user } = useAuth();
+  const { isCartLoaded } = useCart();
   const [addedId, setAddedId] = useState(null);
   const [flyEffect, setFlyEffect] = useState(false);
 
   const handleAdd = useCallback(() => {
-    // Bắt buộc đăng nhập mới được thêm vào giỏ
-    if (!user) {
-      onLoginRequired();
-      return;
-    }
-
+    if (!isCartLoaded) return;
+    if (product.stockQuantity !== null && product.stockQuantity !== undefined && product.stockQuantity < 1) return;
     onAddToCart(product);
 
     setAddedId(product.id);
@@ -29,7 +26,7 @@ function ProductCard({ product, onAddToCart, onLoginRequired }) {
     window.setTimeout(() => {
       setFlyEffect(false);
     }, 700);
-  }, [product, onAddToCart, onLoginRequired, user]);
+  }, [product, onAddToCart]);
 
   const isAdded = addedId === product.id;
 
@@ -38,13 +35,9 @@ function ProductCard({ product, onAddToCart, onLoginRequired }) {
       className={`product-card ${isAdded ? 'product-card-added' : ''}`}
       style={{ '--product-gradient': product.gradient, '--product-accent': product.accent }}
     >
-      <a href={`/product/${product.id}`} className="product-image" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
-        <span className="product-fruit fruit-a">{product.image}</span>
-        <span className="product-fruit fruit-b">{product.fruit}</span>
-        <div className="mini-bottle">
-          <small>Original</small>
-          <strong>{product.name.split(' ')[0]}</strong>
-        </div>
+      {product.id ? (
+        <Link href={`/product/${product.id}`} className="product-image" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+        {product.imageUrl ? <img className="product-photo" src={product.imageUrl} alt={product.name} loading="lazy" /> : <><span className="product-fruit fruit-a">{product.image}</span><span className="product-fruit fruit-b">{product.fruit}</span><div className="mini-bottle"><small>Original</small><strong>{product.name.split(' ')[0]}</strong></div></>}
         <small>{product.badge}</small>
 
         {/* Add-to-cart fly animation particle */}
@@ -53,13 +46,17 @@ function ProductCard({ product, onAddToCart, onLoginRequired }) {
             {product.image}
           </span>
         )}
-      </a>
+        </Link>
+      ) : (
+        <div className="product-image" style={{ display: 'block' }}>
+          {product.imageUrl ? <img className="product-photo" src={product.imageUrl} alt={product.name} loading="lazy" /> : <><span className="product-fruit fruit-a">{product.image}</span><span className="product-fruit fruit-b">{product.fruit}</span><div className="mini-bottle"><small>Original</small><strong>{product.name.split(' ')[0]}</strong></div></>}
+          <small>{product.badge}</small>
+        </div>
+      )}
 
       <div className="product-content">
-        <span className="rating">⭐ 4.9 · Fresh today</span>
-        <a href={`/product/${product.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-          <h3>{product.name}</h3>
-        </a>
+        <span className="rating">{product.rating ? `⭐ ${product.rating} · ${product.ratingCount ?? 0} đánh giá` : '🌿 Tươi mới mỗi ngày'}</span>
+        {product.id ? <Link href={`/product/${product.id}`} style={{ textDecoration: 'none', color: 'inherit' }}><h3>{product.name}</h3></Link> : <h3>{product.name}</h3>}
         <p>{product.description}</p>
         <div className="product-meta">
           <strong>{formatCurrency(product.price)}</strong>
@@ -70,20 +67,19 @@ function ProductCard({ product, onAddToCart, onLoginRequired }) {
           type="button"
           id={`add-to-cart-${product.id}`}
           onClick={handleAdd}
-          aria-label={
-            user
-              ? `Thêm ${product.name} vào giỏ hàng`
-              : 'Đăng nhập để mua hàng'
-          }
+          aria-label={`Thêm ${product.name} vào giỏ hàng`}
+          disabled={!isCartLoaded || !product.id || (product.stockQuantity !== null && product.stockQuantity !== undefined && product.stockQuantity < 1)}
         >
           {isAdded ? (
             <span className="product-add-success-inner">
               <span className="product-add-check">✓</span> Đã thêm vào giỏ!
             </span>
-          ) : user ? (
-            '+ Thêm vào giỏ'
+          ) : !product.id ? (
+            'Chưa có trong catalog'
+          ) : product.stockQuantity !== null && product.stockQuantity !== undefined && product.stockQuantity < 1 ? (
+            'Hết hàng'
           ) : (
-            '🔒 Đăng nhập để mua'
+            isCartLoaded ? '+ Thêm vào giỏ' : 'Đang tải giỏ…'
           )}
         </button>
       </div>
@@ -112,6 +108,9 @@ export function ProductGrid({ products, loading, dataSource, error, onAddToCart,
   }
 
   return (
+    <>
+    {dataSource === 'fallback' && <div className="catalog-fallback-notice" role="status">Đang hiển thị danh mục mẫu vì chưa kết nối được dữ liệu trực tiếp. Vui lòng tải lại hoặc thử sau.</div>}
+    {error && <div className="catalog-fallback-notice" role="alert">{error}</div>}
     <div className="product-grid">
       {products.map((product) => (
         <ProductCard
@@ -122,5 +121,6 @@ export function ProductGrid({ products, loading, dataSource, error, onAddToCart,
         />
       ))}
     </div>
+    </>
   );
 }

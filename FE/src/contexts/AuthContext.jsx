@@ -8,10 +8,12 @@ const AuthContext = createContext(null);
 const BE_URL = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:5000';
 
 /** Lấy role của user từ BE API (không gọi Supabase trực tiếp) */
-async function fetchUserRole(userId) {
+async function fetchUserRole(userId, accessToken) {
   if (!userId) return 'customer';
   try {
-    const res = await fetch(`${BE_URL}/api/users/profile/${userId}`);
+    const res = await fetch(`${BE_URL}/api/users/profile/${userId}`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
     if (!res.ok) return 'customer';
     const json = await res.json();
     return json.data?.role ?? 'customer';
@@ -35,20 +37,19 @@ export function AuthProvider({ children }) {
       const sessionUser = data.session?.user ?? null;
       setUser(sessionUser);
       if (sessionUser) {
-        const role = await fetchUserRole(sessionUser.id);
+        const role = await fetchUserRole(sessionUser.id, data.session.access_token);
         setUserRole(role);
       }
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       const sessionUser = session?.user ?? null;
       setUser(sessionUser);
-      if (sessionUser) {
-        const role = await fetchUserRole(sessionUser.id);
-        setUserRole(role);
-      } else {
-        setUserRole(null);
+      setUserRole(sessionUser ? 'customer' : null);
+      if (sessionUser && session?.access_token) {
+        // Avoid awaiting another Supabase request inside its auth-state callback.
+        queueMicrotask(() => fetchUserRole(sessionUser.id, session.access_token).then(setUserRole));
       }
     });
 
@@ -64,7 +65,8 @@ export function AuthProvider({ children }) {
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error && data?.user) {
-      const role = await fetchUserRole(data.user.id);
+      const { data: sessionData } = await supabase.auth.getSession();
+      const role = await fetchUserRole(data.user.id, sessionData.session?.access_token);
       setUserRole(role);
       return { data, error: null, role };
     }

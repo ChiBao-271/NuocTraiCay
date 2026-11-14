@@ -7,15 +7,15 @@ import { Hero } from '../components/Hero.jsx';
 import { ToastContainer } from '../components/Toast.jsx';
 import { useToast } from '../hooks/useToast.js';
 import { useCart } from '../contexts/CartContext.jsx';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import { fallbackProducts, fetchProducts, formatCurrency } from '../services/productService.js';
+import Link from 'next/link';
+import { fetchProducts, formatCurrency } from '../services/productService.js';
 
 const CATEGORY_PILLS = [
   { id: 'all', label: 'Tất cả', icon: '🌿' },
-  { id: 'juice', label: 'Nước trái cây lạm', icon: '🍊' },
-  { id: 'fresh-fruit', label: 'Trái cây nhiệt đới', icon: '🍍' },
-  { id: 'fresh-fruit-berry', label: 'Dâu Tây & Việt Quất', icon: '🍓' },
-  { id: 'juice-green', label: 'Glow Green', icon: '🥦' },
+  { id: 'juice', label: 'Nước ép', icon: '🍊' },
+  { id: 'smoothie', label: 'Sinh tố', icon: '🥤' },
+  { id: 'fresh-fruit', label: 'Trái cây tươi', icon: '🍍' },
+  { id: 'combo', label: 'Combo', icon: '🧺' },
 ];
 
 const BADGE_COLORS = {
@@ -44,37 +44,47 @@ function getBadgeClass(badge) {
 }
 
 export default function HomePageView() {
-  const [products, setProducts] = useState(fallbackProducts);
+  const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [activePill, setActivePill] = useState(0);
   const { toasts, addToast, removeToast } = useToast();
-  const { addToCart } = useCart();
-  const { user } = useAuth();
+  const { addToCart, isCartLoaded } = useCart();
   const router = useRouter();
 
   useEffect(() => {
     let mounted = true;
-    fetchProducts().then(({ data }) => {
-      if (!mounted) return;
-      setProducts(data);
-      setLoadingProducts(false);
-    });
+    fetchProducts()
+      .then(({ data, source }) => {
+        if (!mounted) return;
+        setProducts(data || []);
+        if (source === 'unavailable') addToast({ message: 'Chưa kết nối được catalog thật. Vui lòng thử tải lại sau.', type: 'error', duration: 5000 });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setProducts([]);
+        addToast({ message: 'Không tải được catalog. Vui lòng thử tải lại.', type: 'error', duration: 5000 });
+      })
+      .finally(() => {
+        if (mounted) setLoadingProducts(false);
+      });
     return () => { mounted = false; };
-  }, []);
+  }, [addToast]);
 
   const activeCat = CATEGORY_PILLS[activePill]?.id ?? 'all';
   const filteredProducts = activeCat === 'all'
     ? products
-    : products.filter(p => p.category === activeCat.split('-')[0]);
+    : products.filter(p => p.category === activeCat);
 
-  const bestSellers = filteredProducts.slice(0, 4);
-  const freshFruits = filteredProducts.filter(p => p.category === 'fresh-fruit').slice(0, 4);
-  const displayFresh = freshFruits.length >= 2 ? freshFruits : filteredProducts.slice(0, 4);
+  const bestSellers = [...filteredProducts]
+    .sort((a, b) => Number(Boolean(b.isBestseller)) - Number(Boolean(a.isBestseller)))
+    .slice(0, 4);
+  const freshFruits = products.filter(p => p.category === 'fresh-fruit').slice(0, 4);
+  const displayFresh = freshFruits;
 
   const handleAddToCart = (product) => {
-    if (!user) {
-      router.push('/login');
-      addToast({ message: '🔒 Vui lòng đăng nhập để thêm vào giỏ hàng.', type: 'info', duration: 3000 });
+    if (!isCartLoaded) return;
+    if (product.stockQuantity !== null && product.stockQuantity !== undefined && product.stockQuantity < 1) {
+      addToast({ message: 'Sản phẩm hiện đã hết hàng.', type: 'error', duration: 2800 });
       return;
     }
     addToCart(product);
@@ -120,7 +130,7 @@ export default function HomePageView() {
               <h2>Sản Phẩm Bán Chạy 🔥</h2>
               <p>Những ly nước ép tuyệt phẩm được lựa chọn nhiều nhất ngày hôm nay</p>
             </div>
-            <a href="/menu" className="btn btn-ghost btn-sm" id="home-see-all-btn">Xem tất cả &rsaquo;</a>
+            <Link href="/menu" className="btn btn-ghost btn-sm" id="home-see-all-btn">Xem tất cả &rsaquo;</Link>
           </div>
 
           {loadingProducts ? (
@@ -139,18 +149,15 @@ export default function HomePageView() {
           ) : (
             <div className="home-product-grid">
               {bestSellers.map((product) => (
-                <article key={product.id} className="hp-card">
+                <article key={product.id || product.name} className="hp-card">
                   {product.badge && (
                     <span className={`hp-badge ${getBadgeClass(product.badge)}`}>
                       {product.badge.toUpperCase()}
                     </span>
                   )}
-                  <a href={`/product/${product.id}`} className="hp-img-wrap">
-                    <span className="hp-emoji">{product.image}</span>
-                    <span className="hp-emoji-sub">{product.fruit}</span>
-                  </a>
+                  {product.id ? <Link href={`/product/${product.id}`} className="hp-img-wrap">{product.imageUrl ? <img className="hp-photo" src={product.imageUrl} alt={product.name} loading="lazy" /> : <><span className="hp-emoji">{product.image}</span><span className="hp-emoji-sub">{product.fruit}</span></>}</Link> : <div className="hp-img-wrap">{product.imageUrl ? <img className="hp-photo" src={product.imageUrl} alt={product.name} loading="lazy" /> : <><span className="hp-emoji">{product.image}</span><span className="hp-emoji-sub">{product.fruit}</span></>}</div>}
                   <div className="hp-body">
-                    <a href={`/product/${product.id}`} className="hp-name">{product.name}</a>
+                    {product.id ? <Link href={`/product/${product.id}`} className="hp-name">{product.name}</Link> : <strong className="hp-name">{product.name}</strong>}
                     <p className="hp-desc">{product.description}</p>
                     <div className="hp-footer">
                       <div>
@@ -161,6 +168,7 @@ export default function HomePageView() {
                         className="hp-add-btn"
                         type="button"
                         onClick={() => handleAddToCart(product)}
+                        disabled={!isCartLoaded || !product.id}
                         id={`add-cart-hp-${product.id}`}
                         aria-label={`Thêm ${product.name}`}
                       >
@@ -181,7 +189,7 @@ export default function HomePageView() {
               <h2>Trái Cây Tươi Hôm Nay 🔥</h2>
               <p>Trái cây tươi ngon, được chọn lọc kỹ càng và cập nhật mỗi ngày</p>
             </div>
-            <a href="/menu" className="btn btn-ghost btn-sm" id="home-fresh-see-all-btn">Xem tất cả &rsaquo;</a>
+            <Link href="/menu" className="btn btn-ghost btn-sm" id="home-fresh-see-all-btn">Xem tất cả &rsaquo;</Link>
           </div>
 
           {loadingProducts ? (
@@ -200,18 +208,15 @@ export default function HomePageView() {
           ) : (
             <div className="home-product-grid">
               {displayFresh.map((product) => (
-                <article key={product.id} className="hp-card">
+                <article key={product.id || product.name} className="hp-card">
                   {product.badge && (
                     <span className={`hp-badge ${getBadgeClass(product.badge)}`}>
                       {product.badge.toUpperCase()}
                     </span>
                   )}
-                  <a href={`/product/${product.id}`} className="hp-img-wrap hp-img-wrap--fruit">
-                    <span className="hp-emoji">{product.image}</span>
-                    <span className="hp-emoji-sub">{product.fruit}</span>
-                  </a>
+                  {product.id ? <Link href={`/product/${product.id}`} className="hp-img-wrap hp-img-wrap--fruit">{product.imageUrl ? <img className="hp-photo" src={product.imageUrl} alt={product.name} loading="lazy" /> : <><span className="hp-emoji">{product.image}</span><span className="hp-emoji-sub">{product.fruit}</span></>}</Link> : <div className="hp-img-wrap hp-img-wrap--fruit">{product.imageUrl ? <img className="hp-photo" src={product.imageUrl} alt={product.name} loading="lazy" /> : <><span className="hp-emoji">{product.image}</span><span className="hp-emoji-sub">{product.fruit}</span></>}</div>}
                   <div className="hp-body">
-                    <a href={`/product/${product.id}`} className="hp-name">{product.name}</a>
+                    {product.id ? <Link href={`/product/${product.id}`} className="hp-name">{product.name}</Link> : <strong className="hp-name">{product.name}</strong>}
                     <p className="hp-desc">{product.description}</p>
                     <div className="hp-footer">
                       <div>
@@ -222,6 +227,7 @@ export default function HomePageView() {
                         className="hp-add-btn"
                         type="button"
                         onClick={() => handleAddToCart(product)}
+                        disabled={!isCartLoaded || !product.id}
                         id={`add-cart-fresh-${product.id}`}
                         aria-label={`Thêm ${product.name}`}
                       >

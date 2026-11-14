@@ -6,15 +6,17 @@ import { Header } from '../../components/Header.jsx';
 import { AuthModal } from '../../components/AuthModal.jsx';
 import { useCart } from '../../contexts/CartContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { createOrder, formatCurrency } from '../../services/productService.js';
+import Link from 'next/link';
+import { createOrder, createSePayCheckout, formatCurrency, getProductById } from '../../services/productService.js';
 
 export default function CheckoutPage() {
-  const { cartItems, cartTotal, clearCart } = useCart();
+  const { cartItems, cartTotal, clearCart, appliedVoucher, hydrateVoucher, replaceCartItems } = useCart();
   const { user } = useAuth();
   const router = useRouter();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cod');
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -23,7 +25,6 @@ export default function CheckoutPage() {
     note: '',
   });
 
-  // Autofill from localStorage
   useEffect(() => {
     if (user) {
       const saved = localStorage.getItem(`shipping_info_${user.id}`);
@@ -53,14 +54,38 @@ export default function CheckoutPage() {
     if (!user) { setIsAuthOpen(true); return; }
 
     setSubmitting(true);
-    const { data, error } = await createOrder({
+    const checkoutPayload = {
       customer: formData,
       items: cartItems,
-      total: cartTotal,
-    });
-    setSubmitting(false);
+      total: finalTotal,
+      note: formData.note,
+      voucherCode: appliedVoucher?.code || '',
+    };
+    const { data, error } = paymentMethod === 'sepay'
+      ? await createSePayCheckout(checkoutPayload)
+      : await createOrder(checkoutPayload);
 
+    setSubmitting(false);
     if (error) {
+      if (error.code === 'ORDER_TOTAL_CHANGED' && Number.isFinite(Number(error.recalculated_total))) {
+        try {
+          const refreshed = await Promise.all(cartItems.map(async (item) => {
+            const result = await getProductById(item.id);
+            return result?.data ? { ...item, ...result.data, quantity: item.quantity } : item;
+          }));
+          replaceCartItems(refreshed);
+          const normalizedVoucher = hydrateVoucher(appliedVoucher?.code);
+          const newSubtotal = refreshed.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+          const newBaseShipping = newSubtotal >= 200000 ? 0 : 20000;
+          const newDiscount = normalizedVoucher?.type === 'percent' ? Math.round(newSubtotal * normalizedVoucher.value / 100) : 0;
+          const newShippingDiscount = normalizedVoucher?.type === 'shipping' ? Math.min(newBaseShipping, normalizedVoucher.value) : 0;
+          const newTotal = Math.max(0, newSubtotal + newBaseShipping - newDiscount - newShippingDiscount);
+          setStatus(`Giá hoặc phí giao hàng vừa thay đổi. Giỏ đã cập nhật; tổng mới là ${formatCurrency(newTotal)}. Vui lòng kiểm tra lại rồi bấm đặt hàng lần nữa.`);
+        } catch {
+          setStatus(`Giá hoặc phí vừa thay đổi. Tổng mới từ máy chủ: ${formatCurrency(Number(error.recalculated_total))}. Hãy tải lại trang giỏ và xác nhận lại.`);
+        }
+        return;
+      }
       setStatus(`Lỗi: ${error.message}`);
       return;
     }
@@ -78,16 +103,54 @@ export default function CheckoutPage() {
       order_code: data.order_code,
       created_at: data.created_at,
       total_amount: data.total_amount,
+      subtotal: data.subtotal ?? cartTotal,
+      shipping_fee: data.shipping_fee ?? SHIPPING_FEE,
+      discount_amount: data.discount_amount ?? discount,
+      voucher_code: appliedVoucher?.code || '',
+      payment_method: paymentMethod,
       customer: formData,
-      items: cartItems,
+      items: data.items?.map((item) => ({
+        ...cartItems.find((cartItem) => cartItem.id === item.product_id),
+        id: item.product_id,
+        name: item.product_name,
+        price: item.unit_price,
+        quantity: item.quantity,
+      })) || cartItems,
     }));
+
+    if (paymentMethod === 'sepay') {
+      const checkout = data.sepay;
+      if (!checkout?.action || checkout.method !== 'POST' || !checkout.fields || typeof checkout.fields !== 'object') {
+        setStatus('Đơn đã được tạo nhưng chưa nhận được thông tin chuyển sang SePay. Vui lòng liên hệ cửa hàng trước khi đặt lại.');
+        return;
+      }
+      clearCart();
+      const paymentForm = document.createElement('form');
+      paymentForm.method = checkout.method;
+      paymentForm.action = checkout.action;
+      paymentForm.style.display = 'none';
+      for (const [name, value] of Object.entries(checkout.fields)) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = String(value);
+        paymentForm.appendChild(input);
+      }
+      document.body.appendChild(paymentForm);
+      paymentForm.submit();
+      return;
+    }
 
     clearCart();
     router.push('/order-success');
   };
 
-  const SHIPPING_FEE = cartTotal >= 200000 ? 0 : 20000;
-  const finalTotal = cartTotal + SHIPPING_FEE;
+  const baseShipping = cartTotal >= 200000 ? 0 : 20000;
+  const discount = appliedVoucher?.type === 'percent' ? Math.round(cartTotal * appliedVoucher.value / 100) : 0;
+  const shippingDiscount = appliedVoucher?.type === 'shipping' ? Math.min(baseShipping, appliedVoucher.value) : 0;
+  const SHIPPING_FEE = baseShipping - shippingDiscount;
+  const voucherShippingDiscount = shippingDiscount;
+  const finalTotal = Math.max(0, cartTotal + SHIPPING_FEE - discount);
 
   if (!user) {
     return (
@@ -114,7 +177,8 @@ export default function CheckoutPage() {
       <main className="page-main checkout-page-layout">
         <div className="section-heading">
           <span className="eyebrow">Thanh toán</span>
-          <h1>Xác nhận đặt hàng</h1>
+          <h1>Thanh toán</h1>
+          <p>Chúng tôi sẽ xác minh giá, tồn kho và phí giao hàng ở bước cuối.</p>
         </div>
 
         <div className="checkout-page-grid">
@@ -181,6 +245,18 @@ export default function CheckoutPage() {
                 />
               </label>
 
+              <fieldset className="checkout-payment-options" disabled={submitting}>
+                <legend>Phương thức thanh toán</legend>
+                <label className={`checkout-payment-choice${paymentMethod === 'cod' ? ' is-selected' : ''}`}>
+                  <input type="radio" name="paymentMethod" value="cod" checked={paymentMethod === 'cod'} onChange={() => setPaymentMethod('cod')} />
+                  <span><strong>Thanh toán khi nhận hàng</strong><small>Trả tiền mặt khi đơn được giao</small></span>
+                </label>
+                <label className={`checkout-payment-choice${paymentMethod === 'sepay' ? ' is-selected' : ''}`}>
+                  <input type="radio" name="paymentMethod" value="sepay" checked={paymentMethod === 'sepay'} onChange={() => setPaymentMethod('sepay')} />
+                  <span><strong>Chuyển khoản ngân hàng qua SePay</strong><small>Thanh toán trực tuyến · Môi trường thử nghiệm</small></span>
+                </label>
+              </fieldset>
+
               {status && (
                 <p className="form-status form-status-error">{status}</p>
               )}
@@ -191,7 +267,7 @@ export default function CheckoutPage() {
                 id="checkout-confirm-btn"
                 disabled={submitting || cartItems.length === 0}
               >
-                {submitting ? '⏳ Đang xử lý...' : `🛍️ Đặt hàng · ${formatCurrency(finalTotal)}`}
+                {submitting ? '⏳ Đang xử lý...' : `${paymentMethod === 'sepay' ? '🏦 Thanh toán qua SePay' : '🛍️ Đặt hàng'} · ${formatCurrency(finalTotal)}`}
               </button>
             </form>
           </section>
@@ -220,9 +296,11 @@ export default function CheckoutPage() {
               <div className="cart-summary-row">
                 <span>Phí giao hàng</span>
                 <span className={SHIPPING_FEE === 0 ? 'text-green' : ''}>
-                  {SHIPPING_FEE === 0 ? 'Miễn phí 🎉' : formatCurrency(SHIPPING_FEE)}
+                  {baseShipping === 0 ? 'Miễn phí 🎉' : formatCurrency(baseShipping)}
                 </span>
               </div>
+              {voucherShippingDiscount > 0 && <div className="cart-summary-row text-green"><span>Giảm phí vận chuyển ({appliedVoucher.code})</span><span>-{formatCurrency(voucherShippingDiscount)}</span></div>}
+              {discount > 0 && <div className="cart-summary-row text-green"><span>Voucher {appliedVoucher.code}</span><span>-{formatCurrency(discount)}</span></div>}
             </div>
 
             <div className="cart-total-row">
@@ -230,13 +308,11 @@ export default function CheckoutPage() {
               <strong>{formatCurrency(finalTotal)}</strong>
             </div>
 
-            <p className="checkout-payment-note">
-              💳 Thanh toán khi nhận hàng (COD)
-            </p>
+            <p className="checkout-payment-note">{paymentMethod === 'sepay' ? '🏦 Bạn sẽ được chuyển tới SePay để thanh toán; đơn chỉ được xác nhận sau khi cửa hàng nhận thông báo thanh toán.' : '💵 Thanh toán khi nhận hàng (COD)'}</p>
 
-            <a href="/cart" className="btn btn-ghost full-width" style={{ marginTop: '0.5rem' }}>
+            <Link href="/cart" className="btn btn-ghost full-width" style={{ marginTop: '0.5rem' }}>
               ← Quay lại giỏ hàng
-            </a>
+            </Link>
           </section>
         </div>
       </main>

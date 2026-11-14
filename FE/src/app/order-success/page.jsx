@@ -9,13 +9,17 @@ export default function OrderSuccessPage() {
   const router = useRouter();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [receiptDate, setReceiptDate] = useState('');
 
   useEffect(() => {
     const savedOrder = sessionStorage.getItem('last_order');
     if (savedOrder) {
       try {
-        setOrder(JSON.parse(savedOrder));
-      } catch (e) {
+        const parsed = JSON.parse(savedOrder);
+        setOrder(parsed);
+        const date = parsed.created_at ? new Date(parsed.created_at) : new Date();
+        setReceiptDate(new Intl.DateTimeFormat('vi-VN', { dateStyle: 'medium', timeStyle: 'short' }).format(date));
+      } catch {
         console.error('Failed to parse order from sessionStorage');
       }
     }
@@ -56,14 +60,18 @@ export default function OrderSuccessPage() {
             <div className="floating-fruit" style={{ animationDelay: '0.4s', top: '10px', right: '-30px' }}>🥝</div>
             <div className="floating-fruit" style={{ animationDelay: '0.8s', bottom: '-20px', left: '10px' }}>🍋</div>
           </div>
-          <h1>Đặt hàng thành công!</h1>
+          <h1>{order.payment_method === 'sepay' ? 'Đã tiếp nhận đơn hàng' : 'Đặt hàng thành công!'}</h1>
           <p>
-            Cảm ơn <strong>{order.customer.fullName}</strong> đã đặt hàng tại FreshFruit Shop.
-            Chúng tôi sẽ sớm liên hệ để giao hàng.
+            Cảm ơn <strong>{order.customer.fullName}</strong> đã đặt hàng tại FreshFruit Shop.{' '}
+            {order.payment_method === 'sepay'
+              ? 'Đơn đang chờ SePay xác nhận thanh toán. Trạng thái này chưa phải xác nhận đã trả tiền.'
+              : 'Chúng tôi sẽ sớm liên hệ để giao hàng.'}
           </p>
           <div className="order-id-badge">
             Mã đơn hàng: <strong>#{(order.order_code || order.id?.slice(0, 8))?.toUpperCase()}</strong>
+            {receiptDate && <small className="receipt-date">Ngày đặt: {receiptDate}</small>}
           </div>
+          {order.payment_method === 'sepay' && <p className="form-status">Trạng thái thanh toán: đang chờ xác nhận</p>}
         </section>
 
         <section className="panel success-details-panel">
@@ -78,6 +86,10 @@ export default function OrderSuccessPage() {
                   <li><strong>Ghi chú:</strong> {order.customer.note}</li>
                 )}
               </ul>
+              <div className="receipt-payment-info">
+                <div><span>Phương thức</span><strong>{order.payment_method === 'sepay' ? 'SePay · Chuyển khoản' : 'Thanh toán khi nhận hàng (COD)'}</strong></div>
+                <div><span>Trạng thái thanh toán</span><strong className={order.payment_method === 'sepay' ? 'receipt-pending' : 'receipt-unpaid'}>{order.payment_method === 'sepay' ? 'Đang chờ xác nhận' : 'Thanh toán khi nhận hàng'}</strong></div>
+              </div>
             </div>
 
             <div className="success-items-card">
@@ -96,6 +108,11 @@ export default function OrderSuccessPage() {
                   </div>
                 ))}
               </div>
+              <div className="receipt-breakdown">
+                <div><span>Tạm tính</span><span>{formatCurrency(order.subtotal ?? order.items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0))}</span></div>
+                <div><span>Phí giao hàng</span><span>{Number(order.shipping_fee || 0) === 0 ? 'Miễn phí' : formatCurrency(order.shipping_fee)}</span></div>
+                {Number(order.discount_amount || 0) > 0 && <div className="receipt-discount"><span>Giảm giá{order.voucher_code ? ` (${order.voucher_code})` : ''}</span><span>-{formatCurrency(order.discount_amount)}</span></div>}
+              </div>
               <div className="success-total">
                 <span>Tổng cộng</span>
                 <strong>{formatCurrency(order.total_amount)}</strong>
@@ -104,12 +121,11 @@ export default function OrderSuccessPage() {
           </div>
 
           <div className="success-actions">
+            <button className="btn btn-ghost" onClick={() => window.print()}>In / Lưu biên lai</button>
             <button className="btn btn-primary" onClick={() => router.push('/')}>
               Tiếp tục mua sắm
             </button>
-            <button className="btn btn-ghost" onClick={() => router.push('/account')}>
-              Xem đơn hàng của tôi
-            </button>
+            <button className="btn btn-ghost" onClick={() => router.push('/account')}>Xem đơn hàng của tôi</button>
           </div>
         </section>
       </main>

@@ -5,6 +5,8 @@ BE/node_modules/
 
 # Environment
 .env
+.env.*
+!.env.example
 .env.local
 .env.development
 .env.production
@@ -13,6 +15,7 @@ BE/node_modules/
 dist/
 build/
 .next/
+.next-dev/
 out/
 
 # Logs

@@ -102,15 +102,7 @@ export async function getRelatedProducts(req, res) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy sản phẩm.' });
     }
 
-    // Cần category_id gốc — gọi thêm Supabase để lấy raw field
-    const { supabase } = await import('../supabase/client.js');
-    const { data: raw } = await supabase
-      .from('products')
-      .select('category_id')
-      .eq('id', id)
-      .single();
-
-    const related = await productService.getRelatedProducts(id, raw?.category_id, limit);
+    const related = await productService.getRelatedProducts(id, product.categoryId, limit);
     res.json({ success: true, count: related.length, data: related });
   } catch (err) {
     console.error('[BE] getRelatedProducts error:', err.message);

@@ -10,7 +10,6 @@ const NAV_LINKS = [
   { href: '/menu?cat=fresh-fruit', label: 'Trái Cây Tươi' },
   { href: '/menu?cat=juice', label: 'Nước Ép' },
   { href: '/rewards', label: 'Ưu Đãi' },
-  { href: '/contact', label: 'Liên Hệ' },
 ];
 
 export function Header() {

@@ -9,28 +9,38 @@ import { AuthModal } from '../../components/AuthModal.jsx';
 import { ToastContainer } from '../../components/Toast.jsx';
 import { useToast } from '../../hooks/useToast.js';
 import { useCart } from '../../contexts/CartContext.jsx';
-import { useAuth } from '../../contexts/AuthContext.jsx';
-import { categories, fallbackProducts, fetchProducts } from '../../services/productService.js';
+import { categories, fetchProducts } from '../../services/productService.js';
 
 export default function MenuPage() {
-  const [products, setProducts] = useState(fallbackProducts);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('all');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const { toasts, addToast, removeToast } = useToast();
   const { addToCart, totalQuantity } = useCart();
-  const { user } = useAuth();
   const router = useRouter();
+  const [dataSource, setDataSource] = useState('loading');
 
   useEffect(() => {
     let mounted = true;
-    fetchProducts().then(({ data }) => {
-      if (!mounted) return;
-      setProducts(data);
-      setLoading(false);
-    });
+    fetchProducts()
+      .then(({ data, source }) => {
+        if (!mounted) return;
+        setProducts(data || []);
+        setDataSource(source || 'api');
+        if (source === 'unavailable') addToast({ message: 'Chưa kết nối được catalog thật. Vui lòng thử tải lại sau.', type: 'error', duration: 5000 });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setProducts([]);
+        setDataSource('unavailable');
+        addToast({ message: 'Không tải được catalog. Vui lòng kiểm tra kết nối và thử lại.', type: 'error', duration: 5000 });
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
     return () => { mounted = false; };
-  }, []);
+  }, [addToast]);
 
   const filteredProducts = useMemo(() => {
     if (activeCategory === 'all') return products;
@@ -43,8 +53,7 @@ export default function MenuPage() {
   };
 
   const handleLoginRequired = () => {
-    setIsAuthOpen(true);
-    addToast({ message: '🔒 Vui lòng đăng nhập để mua hàng.', type: 'info', duration: 3000 });
+    addToast({ message: 'Sản phẩm mẫu chưa có mã catalog hợp lệ nên chưa thể thêm vào giỏ.', type: 'info', duration: 3500 });
   };
 
   return (
@@ -69,6 +78,7 @@ export default function MenuPage() {
         <ProductGrid
           products={filteredProducts}
           loading={loading}
+          dataSource={dataSource}
           onAddToCart={handleAddToCart}
           onLoginRequired={handleLoginRequired}
         />

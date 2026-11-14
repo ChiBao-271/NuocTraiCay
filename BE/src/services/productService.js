@@ -8,8 +8,8 @@ import { supabase } from '../supabase/client.js';
 const CATEGORY_SLUG_MAP = {
   'trai-cay-tuoi': 'fresh-fruit',
   'nuoc-ep-nguyen-chat': 'juice',
-  'sinh-to-smoothie': 'juice',
-  combo: 'combo',
+  'sinh-to-smoothie': 'smoothie',
+  'combo-nuoc-ep-mix': 'combo',
 };
 
 /** Các trường được phép sort */
@@ -34,7 +34,9 @@ const SORTABLE_FIELDS = {
  */
 function resolveCategorySlug(slug = '') {
   if (CATEGORY_SLUG_MAP[slug]) return CATEGORY_SLUG_MAP[slug];
-  if (slug.includes('nuoc-ep') || slug.includes('sinh-to') || slug.includes('smoothie'))
+  if (slug.includes('sinh-to') || slug.includes('smoothie'))
+    return 'smoothie';
+  if (slug.includes('nuoc-ep'))
     return 'juice';
   if (slug.includes('combo') || slug.includes('hop-qua') || slug.includes('set'))
     return 'combo';
@@ -92,18 +94,17 @@ function mapProductRow(product, categoryById) {
 
   return {
     id:             product.id,
+    categoryId:     product.category_id,
     name:           product.name,
     category,
     categoryName:   categoryRecord?.name ?? null,
     price:          Number(product.price ?? 0),
-    unit:           category === 'juice' ? 'chai' : 'kg',
-    badge:          product.is_bestseller
-                      ? 'Bán chạy'
-                      : (product.farming_standard || categoryRecord?.name || 'Tươi mới'),
+    unit:           category === 'juice' || category === 'smoothie' ? 'chai' : category === 'combo' ? 'set' : 'kg',
+    badge:          product.badge || (product.is_bestseller ? 'Bán chạy' : (product.farming_standard || categoryRecord?.name || 'Tươi mới')),
     image:          visuals.image,
-    fruit:          visuals.fruit,
-    accent:         visuals.accent,
-    gradient:       buildGradient(visuals.accent),
+    fruit:          product.fruit || visuals.fruit,
+    accent:         product.accent || visuals.accent,
+    gradient:       buildGradient(product.accent || visuals.accent),
     description,
     imageUrl:       product.image_url       ?? null,
     rating:         product.rating_avg      ?? null,
@@ -112,6 +113,8 @@ function mapProductRow(product, categoryById) {
     origin:         product.origin          ?? null,
     farmingStandard:product.farming_standard ?? null,
     createdAt:      product.created_at,
+    slug:           product.slug ?? null,
+    ratingCount:    product.rating_count ?? null,
   };
 }
 
@@ -122,8 +125,7 @@ function mapProductRow(product, categoryById) {
 async function loadCategoryMap() {
   const { data, error } = await supabase
     .from('categories')
-    .select('id, name, slug')
-    .eq('is_active', true);
+    .select('id, name, slug');
 
   if (error) throw error;
   return new Map((data || []).map((c) => [c.id, c]));
@@ -215,9 +217,7 @@ export async function getProducts(opts = {}) {
   const normalizedCategory = category?.toLowerCase();
   if (normalizedCategory && normalizedCategory !== 'all') {
     const matchingIds = resolveCategoryIds(categoryById, normalizedCategory);
-    if (matchingIds.length > 0) {
-      query = query.in('category_id', matchingIds);
-    }
+    query = query.in('category_id', matchingIds.length > 0 ? matchingIds : ['__no_matching_category__']);
   }
 
   // Sort
@@ -308,9 +308,7 @@ export async function searchProducts(opts = {}) {
   const normalizedCategory = category?.toLowerCase();
   if (normalizedCategory && normalizedCategory !== 'all') {
     const matchingIds = resolveCategoryIds(categoryById, normalizedCategory);
-    if (matchingIds.length > 0) {
-      query = query.in('category_id', matchingIds);
-    }
+    query = query.in('category_id', matchingIds.length > 0 ? matchingIds : ['__no_matching_category__']);
   }
 
   // Sort & Pagination
@@ -366,9 +364,9 @@ export async function getJuiceProducts(opts = {}) {
 export async function getCategories() {
   const { data, error } = await supabase
     .from('categories')
-    .select('id, name, slug, icon')
+    .select('id, name, slug')
     .eq('is_active', true)
-    .order('display_order', { ascending: true });
+    .order('name', { ascending: true });
 
   if (error) throw error;
   return data || [];

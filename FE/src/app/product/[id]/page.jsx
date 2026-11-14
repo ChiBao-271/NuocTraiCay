@@ -33,29 +33,17 @@ export default function ProductDetailPage() {
   }, [id]);
 
   const handleAddToCart = () => {
-    if (!user) {
-      setIsAuthOpen(true);
-      addToast({ message: '🔒 Vui lòng đăng nhập để thêm vào giỏ hàng.', type: 'info', duration: 3000 });
-      return;
-    }
-    
-    // Add multiple quantities
-    for (let i = 0; i < quantity; i++) {
-      addToCart(product);
-    }
+    addToCart(product, quantity);
     
     addToast({ message: `🛒 Đã thêm ${quantity} "${product.name}" vào giỏ!`, type: 'cart', duration: 2500 });
   };
 
   const handleBuyNow = () => {
+    addToCart(product, quantity);
     if (!user) {
-      setIsAuthOpen(true);
-      addToast({ message: '🔒 Vui lòng đăng nhập để mua hàng.', type: 'info', duration: 3000 });
+      addToast({ message: 'Đã lưu sản phẩm vào giỏ. Đăng nhập để tiếp tục đặt hàng.', type: 'info', duration: 3000 });
+      router.push('/login?next=/checkout');
       return;
-    }
-    
-    for (let i = 0; i < quantity; i++) {
-      addToCart(product);
     }
     router.push('/checkout');
   };
@@ -100,12 +88,7 @@ export default function ProductDetailPage() {
           {/* Visuals */}
           <section className="product-detail-visuals" style={{ '--product-gradient': product.gradient, '--product-accent': product.accent }}>
             <div className="product-detail-image-box">
-              <span className="product-fruit fruit-a">{product.image}</span>
-              <span className="product-fruit fruit-b">{product.fruit}</span>
-              <div className="mini-bottle detail-bottle">
-                <small>Fresh</small>
-                <strong>{product.name.split(' ')[0]}</strong>
-              </div>
+              {product.imageUrl ? <img className="product-detail-photo" src={product.imageUrl} alt={product.name} /> : <><span className="product-fruit fruit-a">{product.image}</span><span className="product-fruit fruit-b">{product.fruit}</span><div className="mini-bottle detail-bottle"><small>Fresh</small><strong>{product.name.split(' ')[0]}</strong></div></>}
             </div>
             
             <div className="product-benefits">
@@ -129,7 +112,7 @@ export default function ProductDetailPage() {
             <span className="product-detail-badge">{product.badge || 'Tươi ngon'}</span>
             <h1>{product.name}</h1>
             <div className="product-detail-meta">
-              <span className="rating">⭐ 4.9 (128 đánh giá)</span>
+              <span className="rating">⭐ {product.rating ? `${product.rating} (${product.ratingCount || 0} đánh giá)` : 'Chưa có đánh giá'}</span>
               <span className="divider">•</span>
               <span className="sold">Đã bán 1.2k</span>
             </div>

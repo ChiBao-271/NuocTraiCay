@@ -3,6 +3,8 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 /** Wrapper bảo vệ route: chỉ admin mới được vào */
 export function AdminShell({ children }) {
@@ -48,24 +50,21 @@ const NAV_ITEMS = [
   { href: '/admin', icon: '📊', label: 'Dashboard', exact: true },
   { href: '/admin/orders', icon: '📦', label: 'Đơn hàng' },
   { href: '/admin/products', icon: '🍊', label: 'Sản phẩm' },
-  { href: '/admin/customers', icon: '👥', label: 'Khách hàng' },
-  { href: '/admin/categories', icon: '🗂️', label: 'Danh mục' },
-  { href: '/admin/reports', icon: '📈', label: 'Báo cáo' },
 ];
 
 function AdminSidebar() {
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  const currentPath = usePathname() || '';
 
   return (
     <aside className="admin-sidebar">
       {/* Brand */}
-      <a href="/admin" className="admin-brand">
+      <Link href="/admin" className="admin-brand">
         <span className="admin-brand-icon">🧃</span>
         <div>
           <strong>FreshFruit</strong>
           <small>Admin Panel</small>
         </div>
-      </a>
+      </Link>
 
       {/* Nav */}
       <nav className="admin-nav" aria-label="Admin navigation">
@@ -74,24 +73,24 @@ function AdminSidebar() {
             ? currentPath === item.href
             : currentPath.startsWith(item.href);
           return (
-            <a
+            <Link
               key={item.href}
               href={item.href}
               className={`admin-nav-item${isActive ? ' active' : ''}`}
             >
               <span className="admin-nav-icon">{item.icon}</span>
               <span>{item.label}</span>
-            </a>
+            </Link>
           );
         })}
       </nav>
 
       {/* Footer link */}
       <div className="admin-sidebar-footer">
-        <a href="/" className="admin-nav-item">
+        <Link href="/" className="admin-nav-item">
           <span className="admin-nav-icon">🏠</span>
           <span>Về trang chủ</span>
-        </a>
+        </Link>
       </div>
     </aside>
   );

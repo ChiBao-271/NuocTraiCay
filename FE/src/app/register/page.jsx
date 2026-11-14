@@ -71,8 +71,8 @@ export default function RegisterPage() {
       {/* ── Left: Hero ── */}
       <div className="auth-hero" style={{ backgroundImage: 'url(/register-hero.jpg)' }}>
         <div className="auth-hero-brand">
-          <span className="auth-hero-brand-icon">O</span>
-          <span>Original Fruits</span>
+          <span className="auth-hero-brand-mark" aria-hidden="true">OF</span>
+          <span className="auth-hero-brand-name">Original Fruits</span>
         </div>
         <div className="auth-hero-bottom">
           <h2>Trở Thành Thành Viên</h2>

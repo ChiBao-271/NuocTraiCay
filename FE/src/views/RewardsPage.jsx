@@ -19,7 +19,7 @@ const hotDeals = [
     name: 'Combo Sáng Khoái Cam Dâu',
     desc: 'Nước cam tươi phối dâu tây hữu cơ',
     oldPrice: '119.000đ',
-    price: '$5.99',
+    price: '59.500đ',
     emoji: '🍊',
   },
   {
@@ -28,8 +28,8 @@ const hotDeals = [
     badgeClass: 'deal-badge-green',
     name: 'Mâm Trái Cây Nhiệt Đới',
     desc: 'Set măng cụt, thanh long đỏ và xoài...',
-    oldPrice: '119.000đ',
-    price: '$9.00',
+    oldPrice: '180.000đ',
+    price: '90.000đ',
     emoji: '🍉',
   },
   {
@@ -39,8 +39,38 @@ const hotDeals = [
     name: 'Glow Green Thái Độc',
     desc: 'x2 nước ép cần tây xoài đẹp da',
     oldPrice: '119.000đ',
-    price: '$7.49',
+    price: '79.000đ',
     emoji: '🥦',
+  },
+  {
+    id: 'deal-4',
+    badge: 'FLASH SALE',
+    badgeClass: 'deal-badge-orange',
+    name: 'Dâu Tây Đà Lạt Premium',
+    desc: 'Dâu tây tươi Đà Lạt 500g chọn lọc thủ công',
+    oldPrice: '150.000đ',
+    price: '99.000đ',
+    emoji: '🍓',
+  },
+  {
+    id: 'deal-5',
+    badge: 'GIẢM 40%',
+    badgeClass: 'deal-badge-green',
+    name: 'Nước Ép Xoài Dứa Tươi',
+    desc: 'Xoài chín cát Hòa Lộc & dứa mật ép lạnh',
+    oldPrice: '65.000đ',
+    price: '39.000đ',
+    emoji: '🥭',
+  },
+  {
+    id: 'deal-6',
+    badge: 'ĐỔI XU -30%',
+    badgeClass: 'deal-badge-red',
+    name: 'Combo Detox 3 Ngày',
+    desc: '6 chai nước ép cold-press thanh lọc cơ thể',
+    oldPrice: '320.000đ',
+    price: '224.000đ',
+    emoji: '🌿',
   },
 ];
 
@@ -62,16 +92,14 @@ function CountdownTimer() {
   const [time, setTime] = useState({ days: 2, hours: 14, minutes: 35 });
 
   useEffect(() => {
+    const endAt = Date.now() + ((time.days * 24 + time.hours) * 60 + time.minutes) * 60_000;
     const interval = setInterval(() => {
-      setTime(prev => {
-        let { days, hours, minutes } = prev;
-        minutes--;
-        if (minutes < 0) { minutes = 59; hours--; }
-        if (hours < 0) { hours = 23; days--; }
-        if (days < 0) { days = 0; hours = 0; minutes = 0; }
-        return { days, hours, minutes };
-      });
-    }, 60000);
+      const remaining = Math.max(0, Math.floor((endAt - Date.now()) / 1000));
+      const days = Math.floor(remaining / 86400);
+      const hours = Math.floor((remaining % 86400) / 3600);
+      const minutes = Math.floor((remaining % 3600) / 60);
+      setTime({ days, hours, minutes });
+    }, 60_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -149,7 +177,7 @@ export function RewardsPage() {
               <span className="rw-flash-badge">🔥 SỰ KIỆN HOT NHẤT HÈ</span>
               <h2 className="rw-flash-title">Flash Sale Mùa Hè – Giảm đến 50%</h2>
               <p className="rw-flash-desc">
-                Hãy nhiệt cơn nóng túc thì với ưu đãi cực đại toàn bộ các dòng nước ép hoa quả nguyên chất và trái cây lạnh các sản hảo hàng
+                Tận hưởng ưu đãi đến 50% cho nước ép tươi và trái cây tuyển chọn. Số lượng ưu đãi có hạn trong thời gian diễn ra chương trình.
               </p>
               <CountdownTimer />
             </div>
@@ -181,7 +209,7 @@ export function RewardsPage() {
             {hotDeals.map(deal => (
               <article key={deal.id} className="rw-deal-card">
                 <div className="rw-deal-img">
-                  <span className={`rw-deal-badge ${deal.badgeClass}`}>{deal.badge}</span>
+                  <span className={`rw-deal-badge ${deal.badgeClass}`}><span aria-hidden="true">✦</span> {deal.badge}</span>
                   <span className="rw-deal-emoji">{deal.emoji}</span>
                 </div>
                 <div className="rw-deal-body">
