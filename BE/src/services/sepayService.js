@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import { config } from '../config/env.js';
 
-const SIGNED_FIELDS = ['merchant','operation','payment_method','order_amount','currency','order_invoice_number','order_description','customer_id','success_url','error_url','cancel_url'];
+// SePay Payment Gateway requires this exact canonical order when verifying
+// the checkout HMAC; signing the same values in another order is rejected.
+const SIGNED_FIELDS = ['order_amount','merchant','currency','operation','order_description','order_invoice_number','customer_id','payment_method','success_url','error_url','cancel_url'];
 
 function requiredEnv(name) {
   const value = config[name];
