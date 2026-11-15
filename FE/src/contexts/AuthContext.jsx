@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../supabase/client.js';
 
 const AuthContext = createContext(null);
@@ -9,23 +9,33 @@ const BE_URL = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:5000';
 
 /** Lấy role của user từ BE API (không gọi Supabase trực tiếp) */
 async function fetchUserRole(userId, accessToken) {
-  if (!userId) return 'customer';
+  if (!userId) throw new Error('Không xác định được tài khoản đăng nhập.');
   try {
     const res = await fetch(`${BE_URL}/api/users/profile/${userId}`, {
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     });
-    if (!res.ok) return 'customer';
     const json = await res.json();
-    return json.data?.role ?? 'customer';
-  } catch {
-    return 'customer';
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || `Không xác minh được quyền tài khoản (HTTP ${res.status}).`);
+    }
+    if (!['admin', 'customer'].includes(json.data?.role)) {
+      throw new Error('Hồ sơ tài khoản chưa có role hợp lệ. Kiểm tra public.profiles trong Supabase.');
+    }
+    return json.data.role;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`Không kết nối được backend để xác minh quyền. Kiểm tra NEXT_PUBLIC_BE_URL (${BE_URL}).`);
+    }
+    throw error;
   }
 }
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null); // null = chưa biết
+  const [roleError, setRoleError] = useState('');
   const [loading, setLoading] = useState(isSupabaseConfigured);
+  const roleRequestId = useRef(0);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -33,44 +43,67 @@ export function AuthProvider({ children }) {
       return undefined;
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const sessionUser = data.session?.user ?? null;
-      setUser(sessionUser);
-      if (sessionUser) {
-        const role = await fetchUserRole(sessionUser.id, data.session.access_token);
-        setUserRole(role);
-      }
-      setLoading(false);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    let active = true;
+    const applySession = async (session) => {
+      const requestId = ++roleRequestId.current;
       const sessionUser = session?.user ?? null;
+      if (!active) return;
       setUser(sessionUser);
-      // Keep role unresolved until the profile lookup finishes. AdminShell must
-      // not redirect an admin during this short authentication-state window.
-      setUserRole(null);
-      if (sessionUser && session?.access_token) {
-        // Avoid awaiting another Supabase request inside its auth-state callback.
-        queueMicrotask(() => fetchUserRole(sessionUser.id, session.access_token).then(setUserRole));
+      if (!sessionUser) {
+        setUserRole(null);
+        setRoleError('');
+        setLoading(false);
+        return;
       }
+      setUserRole(null);
+      setRoleError('');
+      try {
+        const role = await fetchUserRole(sessionUser.id, session.access_token);
+        if (active && requestId === roleRequestId.current) setUserRole(role);
+      } catch (error) {
+        console.error('[Auth] Role lookup failed:', error.message);
+        if (active && requestId === roleRequestId.current) {
+          setRoleError(error.message);
+          setUserRole('customer');
+        }
+      } finally {
+        if (active && requestId === roleRequestId.current) setLoading(false);
+      }
+    };
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      await applySession(data.session);
     });
 
-    return () => listener.subscription.unsubscribe();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => applySession(session));
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async ({ email, password }) => {
     if (!isSupabaseConfigured) {
-      setUser({ email, id: 'demo-user', user_metadata: { full_name: 'Demo User' } });
-      setUserRole('customer');
-      return { error: null };
+      return { error: { message: 'Supabase chưa được cấu hình cho frontend. Hãy đặt NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY (hoặc NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) trong môi trường deploy rồi build lại.' } };
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error && data?.user) {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const role = await fetchUserRole(data.user.id, sessionData.session?.access_token);
-      setUserRole(role);
-      return { data, error: null, role };
+      const accessToken = data.session?.access_token;
+      try {
+        const role = await fetchUserRole(data.user.id, accessToken);
+        setUser(data.user);
+        setUserRole(role);
+        setRoleError('');
+        return { data, error: null, role };
+      } catch (roleError) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setUserRole(null);
+        setRoleError(roleError.message);
+        return { data: null, error: { message: roleError.message } };
+      }
     }
     return { data, error };
   };
@@ -144,6 +177,7 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       userRole,
+      roleError,
       isAdmin: userRole === 'admin',
       loading,
       isSupabaseConfigured,
@@ -151,7 +185,7 @@ export function AuthProvider({ children }) {
       signUp,
       signOut,
     }),
-    [user, userRole, loading],
+    [user, userRole, roleError, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

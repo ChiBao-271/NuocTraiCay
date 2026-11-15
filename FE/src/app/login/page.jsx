@@ -41,7 +41,7 @@ export default function LoginPage() {
       };
       
       const errMsg = result.error.message || '';
-      setError(map[errMsg] || 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
+      setError(map[errMsg] || errMsg || 'Email hoặc mật khẩu không đúng. Vui lòng thử lại.');
       return;
     }
 

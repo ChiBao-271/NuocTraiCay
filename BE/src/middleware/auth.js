@@ -23,24 +23,27 @@ export async function requireAuth(req, res, next) {
 }
 
 export async function requireAdmin(req, res, next) {
-  const userClient = createClient(config.supabaseUrl, config.supabaseKey, {
-    global: { headers: { Authorization: `Bearer ${req.accessToken}` } },
+  // The session has already been verified by requireAuth. Use the server-only
+  // admin client for the role lookup so a restrictive profiles RLS policy
+  // does not accidentally prevent a legitimate administrator from entering.
+  if (!config.supabaseServiceRoleKey) {
+    return res.status(503).json({ success: false, error: 'Backend chưa được cấu hình quyền quản trị (SUPABASE_SERVICE_ROLE_KEY).' });
+  }
+  const adminDb = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await userClient
+  const { data, error } = await adminDb
     .from('profiles')
     .select('role')
     .eq('id', req.user.id)
     .maybeSingle();
 
-  if (error) return res.status(500).json({ success: false, error: 'Không thể xác minh quyền quản trị.' });
+  if (error) {
+    console.error('[BE] requireAdmin role lookup failed:', error.message, error.code);
+    return res.status(500).json({ success: false, error: 'Không thể xác minh role quản trị trong public.profiles.' });
+  }
   if (data?.role !== 'admin') return res.status(403).json({ success: false, error: 'Bạn không có quyền quản trị.' });
   req.userRole = data.role;
-  if (!config.supabaseServiceRoleKey) {
-    return res.status(503).json({ success: false, error: 'Backend chưa được cấu hình quyền truy cập dữ liệu quản trị.' });
-  }
-  req.adminDb = createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  req.adminDb = adminDb;
   next();
 }
