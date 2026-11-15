@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Header } from '../../../components/Header.jsx';
 import { AuthModal } from '../../../components/AuthModal.jsx';
 import { ToastContainer } from '../../../components/Toast.jsx';
@@ -16,7 +17,8 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
-  
+  const [activeWeight, setActiveWeight] = useState('350ml');
+
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const { toasts, addToast, removeToast } = useToast();
   const { addToCart, totalQuantity } = useCart();
@@ -34,7 +36,7 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = () => {
     addToCart(product, quantity);
-    
+
     addToast({ message: `🛒 Đã thêm ${quantity} "${product.name}" vào giỏ!`, type: 'cart', duration: 2500 });
   };
 
@@ -73,6 +75,13 @@ export default function ProductDetailPage() {
     );
   }
 
+  const WEIGHT_OPTIONS = ['100ml', '250ml', '350ml', '500ml'];
+
+  const REVIEWS = [
+    { name: 'Nguyễn Minh Anh', stars: 5, date: '05/11/2026', text: 'Nước ép rất ngon, tươi mát và nguyên chất. Giao hàng nhanh, đóng gói cẩn thận. Sẽ ủng hộ tiếp!' },
+    { name: 'Trần Hoàng Nam', stars: 4, date: '03/11/2026', text: 'Vị ngon, không quá ngọt. Lần sau sẽ thử ít ngọt hơn xem thế nào. Chất lượng ổn so với giá tiền.' },
+  ];
+
   return (
     <div className="site-shell page-shell">
       <div className="ambient ambient-one" />
@@ -80,30 +89,28 @@ export default function ProductDetailPage() {
       <Header onLoginClick={() => setIsAuthOpen(true)} />
 
       <main className="page-main product-detail-layout">
-        <button className="btn btn-ghost btn-back" onClick={() => router.back()}>
-          ← Quay lại
-        </button>
+        {/* Breadcrumb */}
+        <nav className="pd-breadcrumb">
+          <Link href="/">Trang chủ</Link>
+          <span>/</span>
+          <Link href="/menu">Trái Cây Tươi</Link>
+          <span>/</span>
+          <span>{product.name}</span>
+        </nav>
 
         <div className="product-detail-grid">
           {/* Visuals */}
           <section className="product-detail-visuals" style={{ '--product-gradient': product.gradient, '--product-accent': product.accent }}>
             <div className="product-detail-image-box">
-              {product.imageUrl ? <img className="product-detail-photo" src={product.imageUrl} alt={product.name} /> : <><span className="product-fruit fruit-a">{product.image}</span><span className="product-fruit fruit-b">{product.fruit}</span><div className="mini-bottle detail-bottle"><small>Fresh</small><strong>{product.name.split(' ')[0]}</strong></div></>}
+              {product.imageUrl
+                ? <img className="product-detail-photo" src={product.imageUrl} alt={product.name} />
+                : <><span className="product-fruit fruit-a">{product.image}</span><span className="product-fruit fruit-b">{product.fruit}</span><div className="mini-bottle detail-bottle"><small>Fresh</small><strong>{product.name.split(' ')[0]}</strong></div></>}
             </div>
-            
+
             <div className="product-benefits">
-              <div className="benefit-card">
-                <span>🌿</span>
-                <small>100% Tự nhiên</small>
-              </div>
-              <div className="benefit-card">
-                <span>🧊</span>
-                <small>Ép lạnh</small>
-              </div>
-              <div className="benefit-card">
-                <span>🛡️</span>
-                <small>Không bảo quản</small>
-              </div>
+              <div className="benefit-card"><span>🌿</span><small>100% Tự nhiên</small></div>
+              <div className="benefit-card"><span>🧊</span><small>Ép lạnh</small></div>
+              <div className="benefit-card"><span>🛡️</span><small>Không bảo quản</small></div>
             </div>
           </section>
 
@@ -112,18 +119,34 @@ export default function ProductDetailPage() {
             <span className="product-detail-badge">{product.badge || 'Tươi ngon'}</span>
             <h1>{product.name}</h1>
             <div className="product-detail-meta">
-              <span className="rating">⭐ {product.rating ? `${product.rating} (${product.ratingCount || 0} đánh giá)` : 'Chưa có đánh giá'}</span>
+              <span className="rating">⭐ 4.9 (128 đánh giá)</span>
               <span className="divider">•</span>
               <span className="sold">Đã bán 1.2k</span>
             </div>
-            
+
             <div className="product-detail-price-box">
               <h2 className="product-detail-price">{formatCurrency(product.price)}</h2>
               <span className="product-detail-unit">/ {product.unit}</span>
             </div>
-            
+
             <p className="product-detail-desc">{product.description}</p>
-            
+
+            {/* Weight options */}
+            <div className="pd-weight-section">
+              <label className="pd-option-label">Dung tích</label>
+              <div className="pd-weight-pills">
+                {WEIGHT_OPTIONS.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    className={`pd-weight-pill ${activeWeight === w ? 'pd-weight-pill--active' : ''}`}
+                    onClick={() => setActiveWeight(w)}
+                  >{w}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sweetness */}
             <div className="product-detail-options">
               <div className="option-group">
                 <label>Độ ngọt</label>
@@ -135,23 +158,46 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
+            {/* Nutrition bar */}
+            <div className="pd-nutrition">
+              <div className="pd-nutrition-title">Thông tin dinh dưỡng <small>(per 350ml)</small></div>
+              <div className="pd-nutrition-bars">
+                <div className="pd-nutr-item">
+                  <span>Calories</span>
+                  <div className="pd-nutr-bar-wrap"><div className="pd-nutr-bar" style={{ width: '48%', background: '#f97316' }} /></div>
+                  <span className="pd-nutr-val">60 kcal</span>
+                </div>
+                <div className="pd-nutr-item">
+                  <span>Vitamin C</span>
+                  <div className="pd-nutr-bar-wrap"><div className="pd-nutr-bar" style={{ width: '72%', background: '#22c55e' }} /></div>
+                  <span className="pd-nutr-val">36mg</span>
+                </div>
+                <div className="pd-nutr-item">
+                  <span>Đường</span>
+                  <div className="pd-nutr-bar-wrap"><div className="pd-nutr-bar" style={{ width: '55%', background: '#3b82f6' }} /></div>
+                  <span className="pd-nutr-val">14g</span>
+                </div>
+                <div className="pd-nutr-item">
+                  <span>Chất xơ</span>
+                  <div className="pd-nutr-bar-wrap"><div className="pd-nutr-bar" style={{ width: '20%', background: '#a855f7' }} /></div>
+                  <span className="pd-nutr-val">1.6g</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
             <div className="product-detail-actions">
               <div className="quantity-selector">
                 <button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))}>−</button>
                 <span>{quantity}</span>
                 <button type="button" onClick={() => setQuantity(quantity + 1)}>+</button>
               </div>
-              
               <div className="action-buttons">
-                <button className="btn btn-outline" type="button" onClick={handleAddToCart}>
-                  + Thêm vào giỏ
-                </button>
-                <button className="btn btn-primary" type="button" onClick={handleBuyNow}>
-                  Mua ngay
-                </button>
+                <button className="btn btn-outline" type="button" onClick={handleAddToCart}>+ Thêm vào giỏ</button>
+                <button className="btn btn-primary" type="button" onClick={handleBuyNow}>Mua ngay</button>
               </div>
             </div>
-            
+
             <div className="product-detail-delivery">
               <div className="delivery-row">
                 <span>🚚</span>
@@ -163,21 +209,43 @@ export default function ProductDetailPage() {
             </div>
           </section>
         </div>
-        
-        {/* Related Products placeholder */}
+
+        {/* Customer Reviews */}
+        <section className="pd-reviews">
+          <h3 className="pd-reviews-title">Đánh giá khách hàng ⭐</h3>
+          <div className="pd-reviews-summary">
+            <div className="pd-reviews-score">4.9</div>
+            <div>
+              <div className="pd-reviews-stars">⭐⭐⭐⭐⭐</div>
+              <small>128 đánh giá</small>
+            </div>
+          </div>
+          <div className="pd-reviews-list">
+            {REVIEWS.map((r, i) => (
+              <div key={i} className="pd-review-item">
+                <div className="pd-review-header">
+                  <div className="pd-review-avatar">{r.name[0]}</div>
+                  <div>
+                    <strong>{r.name}</strong>
+                    <div className="pd-review-stars">{'⭐'.repeat(r.stars)}</div>
+                  </div>
+                  <small className="pd-review-date">{r.date}</small>
+                </div>
+                <p className="pd-review-text">{r.text}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Related products */}
         <section className="related-products">
           <h3>Có thể bạn sẽ thích</h3>
-          <p>Xem thêm tại <a href="/menu" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Menu</a></p>
+          <p>Xem thêm tại <a href="/menu" style={{ color: 'var(--primary)', fontWeight: 'bold' }}>Menu trái cây & nước ép</a></p>
         </section>
       </main>
 
-      {/* Floating cart button */}
       {totalQuantity > 0 && (
-        <button
-          className="floating-cart-btn"
-          type="button"
-          onClick={() => router.push('/cart')}
-        >
+        <button className="floating-cart-btn" type="button" onClick={() => router.push('/cart')}>
           🛒 Xem giỏ hàng · <strong>{totalQuantity}</strong>
         </button>
       )}

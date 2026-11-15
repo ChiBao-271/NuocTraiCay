@@ -53,6 +53,25 @@ export default function OrderSuccessPage() {
       <Header cartQuantity={0} onLoginClick={() => {}} />
 
       <main className="page-main order-success-layout">
+        {/* Stepper */}
+        <div className="os-stepper">
+          <div className="os-step os-step--done">
+            <span className="os-step-check">✓</span>
+            <span>Giỏ hàng</span>
+          </div>
+          <div className="os-step-line os-step-line--done" />
+          <div className="os-step os-step--done">
+            <span className="os-step-check">✓</span>
+            <span>Thanh toán</span>
+          </div>
+          <div className="os-step-line os-step-line--done" />
+          <div className="os-step os-step--done">
+            <span className="os-step-check">✓</span>
+            <span>Hoàn tất</span>
+          </div>
+        </div>
+
+        {/* Success banner */}
         <section className="panel success-hero-panel">
           <div className="success-icon-wrap">
             <span className="success-icon-check">✅</span>
@@ -74,25 +93,11 @@ export default function OrderSuccessPage() {
           {order.payment_method === 'sepay' && <p className="form-status">Trạng thái thanh toán: đang chờ xác nhận</p>}
         </section>
 
+        {/* Two-column details */}
         <section className="panel success-details-panel">
-          <div className="success-grid">
-            <div className="success-info-card">
-              <h3>Thông tin giao hàng</h3>
-              <ul>
-                <li><strong>Người nhận:</strong> {order.customer.fullName}</li>
-                <li><strong>Số điện thoại:</strong> {order.customer.phone}</li>
-                <li><strong>Địa chỉ:</strong> {order.customer.address}</li>
-                {order.customer.note && (
-                  <li><strong>Ghi chú:</strong> {order.customer.note}</li>
-                )}
-              </ul>
-              <div className="receipt-payment-info">
-                <div><span>Phương thức</span><strong>{order.payment_method === 'sepay' ? 'SePay · Chuyển khoản' : 'Thanh toán khi nhận hàng (COD)'}</strong></div>
-                <div><span>Trạng thái thanh toán</span><strong className={order.payment_method === 'sepay' ? 'receipt-pending' : 'receipt-unpaid'}>{order.payment_method === 'sepay' ? 'Đang chờ xác nhận' : 'Thanh toán khi nhận hàng'}</strong></div>
-              </div>
-            </div>
-
-            <div className="success-items-card">
+          <div className="os-two-col">
+            {/* Left: order items */}
+            <div className="os-col-items">
               <h3>Chi tiết sản phẩm</h3>
               <div className="success-items-list">
                 {order.items.map((item) => (
@@ -116,6 +121,23 @@ export default function OrderSuccessPage() {
               <div className="success-total">
                 <span>Tổng cộng</span>
                 <strong>{formatCurrency(order.total_amount)}</strong>
+              </div>
+            </div>
+
+            {/* Right: shipping & payment */}
+            <div className="os-col-info">
+              <h3>Thông tin giao hàng</h3>
+              <ul className="os-info-list">
+                <li><span>Người nhận</span><strong>{order.customer.fullName}</strong></li>
+                <li><span>Số điện thoại</span><strong>{order.customer.phone}</strong></li>
+                <li><span>Địa chỉ</span><strong>{order.customer.address}</strong></li>
+                {order.customer.note && <li><span>Ghi chú</span><strong>{order.customer.note}</strong></li>}
+              </ul>
+
+              <h3 style={{ marginTop: '1.5rem' }}>Thông tin thanh toán</h3>
+              <div className="receipt-payment-info">
+                <div><span>Phương thức</span><strong>{order.payment_method === 'sepay' ? 'SePay · Chuyển khoản' : 'Thanh toán khi nhận hàng (COD)'}</strong></div>
+                <div><span>Trạng thái</span><strong className={order.payment_method === 'sepay' ? 'receipt-pending' : 'receipt-unpaid'}>{order.payment_method === 'sepay' ? 'Đang chờ xác nhận' : 'Thanh toán khi nhận hàng'}</strong></div>
               </div>
             </div>
           </div>

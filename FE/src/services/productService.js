@@ -270,12 +270,21 @@ export async function fetchAdminDashboard() {
   }
 }
 
-export async function fetchAdminOrders({ page = 1, limit = 20, status = 'all' } = {}) {
+export async function fetchAdminOrders({ page = 1, limit = 20, status = 'all', payment = 'all', search = '', from = '', to = '' } = {}) {
   try {
     const query = new URLSearchParams({ page: String(page), limit: String(limit), status });
+    if (payment !== 'all') query.set('payment', payment);
+    if (search.trim()) query.set('search', search.trim());
+    if (from) query.set('from', from);
+    if (to) query.set('to', to);
     const result = await apiFetch(`/api/admin/orders?${query}`);
-    return { data: result.data || [], total: result.total || 0, error: null };
-  } catch (error) { return { data: [], total: 0, error }; }
+    return { data: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0, error: null };
+  } catch (error) { return { data: [], total: 0, totalPages: 0, error }; }
+}
+
+export async function fetchAdminOrderDetails(orderId) {
+  try { return { data: await apiFetch(`/api/admin/orders/${encodeURIComponent(orderId)}`), error: null }; }
+  catch (error) { return { data: null, error }; }
 }
 
 export async function updateAdminOrderStatus(orderId, order_status) {
@@ -285,9 +294,10 @@ export async function updateAdminOrderStatus(orderId, order_status) {
   } catch (error) { return { data: null, error }; }
 }
 
-export async function fetchAdminProducts({ page = 1, limit = 20, status = 'all', category = 'all' } = {}) {
+export async function fetchAdminProducts({ page = 1, limit = 20, status = 'all', category = 'all', search = '' } = {}) {
   try {
     const query = new URLSearchParams({ page: String(page), limit: String(limit), status, category });
+    if (search.trim()) query.set('search', search.trim());
     const result = await apiFetch(`/api/admin/products?${query}`);
     return { data: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0, error: null };
   } catch (error) { return { data: [], total: 0, totalPages: 0, error }; }
@@ -300,12 +310,50 @@ export async function fetchAdminCategories() {
   } catch (error) { return { data: [], error }; }
 }
 
+export async function saveAdminCategory(category, originalId = null) {
+  try {
+    const path = originalId ? `/api/admin/categories/${encodeURIComponent(originalId)}` : '/api/admin/categories';
+    const data = await apiFetch(path, { method: originalId ? 'PATCH' : 'POST', body: JSON.stringify(category) });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
+export async function fetchAdminUsers({ page = 1, limit = 20 } = {}) {
+  try {
+    const result = await apiFetch(`/api/admin/users?${new URLSearchParams({ page: String(page), limit: String(limit) })}`);
+    return { data: result.data || [], total: result.total || 0, error: null };
+  } catch (error) { return { data: [], total: 0, error }; }
+}
+
+export async function updateAdminUserRole(userId, role) {
+  try {
+    const data = await apiFetch(`/api/admin/users/${encodeURIComponent(userId)}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
 export async function saveAdminProduct(product, originalId = null) {
   try {
     const isUpdate = Boolean(originalId);
     const path = isUpdate ? `/api/admin/products/${encodeURIComponent(originalId)}` : '/api/admin/products';
     const data = await apiFetch(path, { method: isUpdate ? 'PATCH' : 'POST', body: JSON.stringify(product) });
     return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
+export async function uploadAdminProductImage(file) {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    const res = await fetch(`${BE_URL}/api/admin/uploads/product-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': file.type, ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+      body: file,
+      signal: AbortSignal.timeout(30000),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || `API error ${res.status}`);
+    return { data: json.data, error: null };
   } catch (error) { return { data: null, error }; }
 }
 

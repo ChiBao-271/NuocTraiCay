@@ -1,78 +1,29 @@
 'use client';
-
 import { useCallback, useEffect, useState } from 'react';
-import { fetchAdminOrders, formatCurrency, updateAdminOrderStatus } from '../../../services/productService.js';
+import { fetchAdminDashboard, fetchAdminOrderDetails, fetchAdminOrders, formatCurrency, updateAdminOrderStatus } from '../../../services/productService.js';
 
-const FILTERS = [
-  ['all', 'Tất cả'], ['pending', 'Chờ xác nhận'], ['confirmed', 'Đã xác nhận'],
-  ['shipping', 'Đang giao'], ['completed', 'Hoàn tất'], ['cancelled', 'Đã hủy'],
-];
-const STATUSES = {
-  pending: ['Chờ xác nhận', 'status-pending'], confirmed: ['Đã xác nhận', 'status-confirmed'],
-  shipping: ['Đang giao', 'status-shipping'], completed: ['Hoàn tất', 'status-completed'],
-  cancelled: ['Đã hủy', 'status-cancelled'],
-};
-const NEXT_STATUS = { pending: ['confirmed', 'cancelled'], confirmed: ['shipping', 'cancelled'], shipping: ['completed'], completed: [], cancelled: [] };
+const STATUSES = [['all','Tất cả'],['pending','Chờ xác nhận'],['confirmed','Đã xác nhận'],['shipping','Đang giao'],['completed','Hoàn tất'],['cancelled','Đã hủy']];
+const LABELS = Object.fromEntries(STATUSES.slice(1));
+const NEXT = { pending:['confirmed','cancelled'], confirmed:['shipping','cancelled'], shipping:['completed'], completed:[], cancelled:[] };
+const PAYMENTS = { unpaid:'Chưa thanh toán', paid:'Đã thanh toán', refunded:'Đã hoàn tiền', pending:'Đang xử lý' };
 
 export default function AdminOrdersPage() {
-  const [status, setStatus] = useState('all');
-  const [page, setPage] = useState(1);
-  const [orders, setOrders] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [updatingId, setUpdatingId] = useState(null);
-  const pageSize = 20;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-  const loadOrders = useCallback(async () => {
-    setLoading(true); setError('');
-    const result = await fetchAdminOrders({ page, limit: pageSize, status });
-    setOrders(result.data); setTotal(result.total);
-    setError(result.error ? 'Không tải được đơn hàng. Kiểm tra backend, quyền admin và cấu hình service role.' : '');
-    setLoading(false);
-  }, [page, status]);
-
-  useEffect(() => { loadOrders(); }, [loadOrders]);
-
-  const handleStatusChange = async (orderId, nextStatus) => {
-    if (!nextStatus) return;
-    setUpdatingId(orderId); setError('');
-    const result = await updateAdminOrderStatus(orderId, nextStatus);
-    if (result.error) setError(result.error.message || 'Không cập nhật được trạng thái đơn.');
-    await loadOrders();
-    setUpdatingId(null);
-  };
-
-  return (
-    <section className="admin-orders-page">
-      <div className="admin-page-header">
-        <div><span className="eyebrow">📦 Vận hành</span><h1>Quản lý đơn hàng</h1><p>Lọc và cập nhật trạng thái đơn theo quy trình xử lý.</p></div>
-        <button className="btn btn-ghost" type="button" onClick={loadOrders} disabled={loading}>↻ Làm mới</button>
-      </div>
-      <div className="admin-order-filters" aria-label="Lọc theo trạng thái">
-        {FILTERS.map(([value, label]) => <button key={value} type="button" className={status === value ? 'active' : ''} onClick={() => { setStatus(value); setPage(1); }}>{label}</button>)}
-      </div>
-      {error && <div className="admin-orders-error" role="alert">{error}</div>}
-      <div className="admin-panel admin-orders-panel">
-        {loading ? <div className="admin-orders-empty">Đang tải đơn hàng…</div> : orders.length === 0 ? <div className="admin-orders-empty">Chưa có đơn hàng phù hợp.</div> : (
-          <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Điện thoại</th><th>Tổng tiền</th><th>Trạng thái</th><th>Ngày đặt</th><th>Cập nhật</th></tr></thead><tbody>
-            {orders.map((order) => {
-              const badge = STATUSES[order.order_status] || [order.order_status, ''];
-              const next = NEXT_STATUS[order.order_status] || [];
-              return <tr key={order.id}>
-                <td><code className="admin-order-code">{order.order_code || `#${String(order.id).slice(0, 8).toUpperCase()}`}</code></td>
-                <td>{order.recipient_name || '—'}</td><td>{order.recipient_phone || '—'}</td>
-                <td><strong>{formatCurrency(order.total_amount || 0)}</strong></td>
-                <td><span className={`account-order-status ${badge[1]}`}>{badge[0]}</span></td>
-                <td><small>{new Date(order.created_at).toLocaleDateString('vi-VN')}</small></td>
-                <td>{next.length ? <select aria-label={`Cập nhật trạng thái ${order.order_code}`} value="" disabled={updatingId === order.id} onChange={(event) => handleStatusChange(order.id, event.target.value)}><option value="">{updatingId === order.id ? 'Đang lưu…' : 'Chọn trạng thái'}</option>{next.map((candidate) => <option key={candidate} value={candidate}>{STATUSES[candidate][0]}</option>)}</select> : <span className="admin-order-terminal">—</span>}</td>
-              </tr>;
-            })}
-          </tbody></table></div>
-        )}
-      </div>
-      <div className="admin-order-pagination"><span>{total} đơn · Trang {page} / {totalPages}</span><div><button className="btn btn-ghost" type="button" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}>← Trước</button><button className="btn btn-ghost" type="button" disabled={page >= totalPages || loading} onClick={() => setPage((value) => value + 1)}>Tiếp →</button></div></div>
-    </section>
-  );
+  const [status,setStatus]=useState('all'); const [payment,setPayment]=useState('all'); const [search,setSearch]=useState(''); const [page,setPage]=useState(1);
+  const [orders,setOrders]=useState([]); const [total,setTotal]=useState(0); const [totalPages,setTotalPages]=useState(1); const [stats,setStats]=useState(null);
+  const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [updating,setUpdating]=useState(null); const [detail,setDetail]=useState(null); const [detailLoading,setDetailLoading]=useState(false); const size=20;
+  const load=useCallback(async()=>{setLoading(true);setError('');const [r,d]=await Promise.all([fetchAdminOrders({page,limit:size,status,payment,search}),fetchAdminDashboard()]);setOrders(r.data);setTotal(r.total);setTotalPages(Math.max(1,r.totalPages));if(r.error)setError(r.error.message||'Không tải được đơn hàng.');if(!d.error)setStats(d.data?.stats||null);setLoading(false)},[page,status,payment,search]);
+  useEffect(()=>{load()},[load]);
+  const update=async(id,next)=>{if(!next)return;setUpdating(id);const r=await updateAdminOrderStatus(id,next);if(r.error)setError(r.error.message||'Không thể cập nhật trạng thái.');await load();setUpdating(null)};
+  const openDetail=async(id)=>{setDetailLoading(true);setDetail({});const r=await fetchAdminOrderDetails(id);setDetailLoading(false);setDetail(r.error?{error:r.error.message}:r.data)};
+  const exportCsv=()=>{const rows=[['Mã đơn','Khách hàng','Điện thoại','Tổng tiền VND','Thanh toán','Trạng thái','Ngày đặt'],...orders.map(o=>[o.order_code,o.recipient_name,o.recipient_phone,o.total_amount,o.payment_status,o.order_status,o.created_at])];const content='\ufeff'+rows.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='don-hang.csv';a.click();URL.revokeObjectURL(url)};
+  return <section className="admin-orders-page">
+    <div className="admin-page-header"><div><span className="eyebrow">📦 Vận hành</span><h1>Quản lý đơn hàng</h1><p>Theo dõi, lọc và xử lý đơn hàng thực.</p></div><div className="admin-product-actions"><button className="btn btn-ghost" onClick={load} disabled={loading}>↻ Làm mới</button><button className="btn btn-primary" onClick={exportCsv} disabled={!orders.length}>Xuất CSV trang này</button></div></div>
+    <div className="admin-stats-grid">{[['Tổng đơn',stats?.totalOrders??total],['Chờ xử lý',stats?.pendingOrders??0],['Doanh thu tháng',formatCurrency(stats?.monthRevenue??0)],['Đơn trong tháng',stats?.monthOrders??0]].map(([label,value])=><div className="admin-stat-card" key={label}><div className="admin-stat-body"><p className="admin-stat-label">{label}</p><strong className="admin-stat-value">{value}</strong></div></div>)}</div>
+    <div className="admin-order-filters" aria-label="Lọc trạng thái">{STATUSES.map(([value,label])=><button key={value} className={status===value?'active':''} onClick={()=>{setStatus(value);setPage(1)}}>{label}</button>)}</div>
+    <div className="admin-product-toolbar"><input aria-label="Tìm đơn" placeholder="Tìm mã đơn, tên, số điện thoại…" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/><select aria-label="Lọc thanh toán" value={payment} onChange={e=>{setPayment(e.target.value);setPage(1)}}><option value="all">Mọi thanh toán</option><option value="unpaid">Chưa thanh toán</option><option value="paid">Đã thanh toán</option><option value="refunded">Đã hoàn tiền</option></select></div>
+    {error&&<div className="admin-orders-error" role="alert">{error}</div>}
+    <div className="admin-panel admin-orders-panel">{loading?<div className="admin-orders-empty">Đang tải đơn…</div>:orders.length===0?<div className="admin-orders-empty">Không có đơn phù hợp.</div>:<div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Mã đơn</th><th>Người nhận</th><th>Điện thoại</th><th>Tổng tiền</th><th>Thanh toán</th><th>Trạng thái</th><th>Ngày đặt</th><th>Thao tác</th></tr></thead><tbody>{orders.map(o=><tr key={o.id}><td><code>{o.order_code||o.id}</code></td><td>{o.recipient_name||'—'}</td><td>{o.recipient_phone||'—'}</td><td><strong>{formatCurrency(o.total_amount||0)}</strong></td><td>{PAYMENTS[o.payment_status]||o.payment_status||'—'}</td><td>{LABELS[o.order_status]||o.order_status}</td><td>{o.created_at?new Date(o.created_at).toLocaleString('vi-VN'):'—'}</td><td><div className="admin-product-actions"><button className="btn btn-ghost" onClick={()=>openDetail(o.id)}>Chi tiết</button>{(NEXT[o.order_status]||[]).length>0&&<select aria-label={'Cập nhật trạng thái '+o.order_code} value="" disabled={updating===o.id} onChange={e=>update(o.id,e.target.value)}><option value="">{updating===o.id?'Đang lưu…':'Cập nhật'}</option>{NEXT[o.order_status].map(n=><option key={n} value={n}>{LABELS[n]}</option>)}</select>}</div></td></tr>)}</tbody></table></div>}</div>
+    <div className="admin-order-pagination"><span>{total} đơn · Trang {page} / {totalPages}</span><div><button className="btn btn-ghost" disabled={page<=1||loading} onClick={()=>setPage(page-1)}>← Trước</button><button className="btn btn-ghost" disabled={page>=totalPages||loading} onClick={()=>setPage(page+1)}>Tiếp →</button></div></div>
+    {detail&&<div className="admin-product-modal-backdrop" onClick={()=>setDetail(null)}><div className="admin-product-modal panel" role="dialog" aria-modal="true" aria-label="Chi tiết đơn" onClick={e=>e.stopPropagation()}><button className="account-order-modal-close" onClick={()=>setDetail(null)}>×</button><h2>Chi tiết đơn hàng</h2>{detailLoading?<p>Đang tải…</p>:detail.error?<p role="alert">{detail.error}</p>:<><p><strong>{detail.order_code}</strong> · {detail.recipient_name}</p><p>{detail.recipient_phone} · {detail.shipping_address}</p><p>Thanh toán: {PAYMENTS[detail.payment_status]||detail.payment_status} · {detail.payment_method}</p><p>Ghi chú: {detail.note||'—'}</p><h3>Sản phẩm</h3>{(detail.items||[]).map(i=><p key={i.id}>{i.product_name} × {i.quantity} — {formatCurrency(i.item_subtotal)}</p>)}<strong>Tổng: {formatCurrency(detail.total_amount||0)}</strong></>}</div></div>}
+  </section>;
 }

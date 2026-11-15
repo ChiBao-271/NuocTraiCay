@@ -26,7 +26,7 @@ function ProductCard({ product, onAddToCart, onLoginRequired }) {
     window.setTimeout(() => {
       setFlyEffect(false);
     }, 700);
-  }, [product, onAddToCart]);
+  }, [product, onAddToCart, isCartLoaded]);
 
   const isAdded = addedId === product.id;
 

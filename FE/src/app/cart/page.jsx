@@ -65,15 +65,7 @@ export default function CartPage() {
       <Header />
 
       <main className="page-main cart-page-layout">
-        <div className="cart-page-heading">
-          <span className="eyebrow">🛒 My Cart</span>
-          <h1>Giỏ hàng của bạn</h1>
-          {cartItems.length > 0 && (
-            <button className="btn btn-ghost" type="button" onClick={clearCart}>
-              Xóa tất cả
-            </button>
-          )}
-        </div>
+        <h1 className="cart-v2-title">Giỏ Hàng Của Bạn 🛒</h1>
 
         {cartItems.length === 0 ? (
           <div className="panel cart-empty-panel">
@@ -87,131 +79,119 @@ export default function CartPage() {
             </div>
           </div>
         ) : (
-          <div className="cart-page-grid">
+          <div className="cart-v2-grid">
             {/* Left: Items list */}
-            <section className="panel cart-items-panel">
-              <h2>Sản phẩm ({totalQuantity})</h2>
-              <div className="cart-list">
-                {cartItems.map((item) => (
-                  <div className="cart-item cart-item-detailed" key={item.id}>
-                    <div
-                      className="cart-item-visual"
-                      style={{ background: item.gradient }}
-                    >
-                      <span>{item.image}</span>
-                    </div>
-                    <div className="cart-item-info">
-                      <strong>{item.name}</strong>
-                      <small>{formatCurrency(item.price)} / {item.unit}</small>
-                      <div className="quantity-control">
-                        <button
-                          type="button"
-                          onClick={() => changeQuantity(item.id, item.quantity - 1)}
-                          aria-label="Giảm số lượng"
-                        >
-                          −
-                        </button>
-                        <span>{item.quantity}</span>
-                        <button
-                          type="button"
-                          onClick={() => changeQuantity(item.id, item.quantity + 1)}
-                          aria-label="Tăng số lượng"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                    <div className="cart-item-right">
-                      <strong className="cart-item-total">
-                        {formatCurrency(item.price * item.quantity)}
-                      </strong>
-                      <button
-                        className="cart-remove-btn"
-                        type="button"
-                        onClick={() => removeFromCart(item.id)}
-                        aria-label={`Xóa ${item.name}`}
-                      >
-                        ✕
-                      </button>
-                    </div>
+            <section className="cart-v2-items-panel">
+              {cartItems.map((item) => (
+                <div className="cart-v2-item" key={item.id}>
+                  <div className="cart-v2-img" style={{ background: item.gradient }}>
+                    <span>{item.image}</span>
                   </div>
-                ))}
-              </div>
+                  <div className="cart-v2-info">
+                    <strong className="cart-v2-name">{item.name}</strong>
+                    <small className="cart-v2-desc">{item.description}</small>
+                    <small className="cart-v2-unit">Dung tích: {item.unit}</small>
+                  </div>
+                  <div className="cart-v2-qty-block">
+                    <button
+                      type="button"
+                      className="cart-v2-qty-btn"
+                      onClick={() => changeQuantity(item.id, item.quantity - 1)}
+                      aria-label="Giảm số lượng"
+                    >−</button>
+                    <span className="cart-v2-qty-num">{item.quantity}</span>
+                    <button
+                      type="button"
+                      className="cart-v2-qty-btn"
+                      onClick={() => changeQuantity(item.id, item.quantity + 1)}
+                      aria-label="Tăng số lượng"
+                    >+</button>
+                  </div>
+                  <div className="cart-v2-price-block">
+                    <strong className="cart-v2-price">{formatCurrency(item.price * item.quantity)}</strong>
+                    <small className="cart-v2-unit-price">{formatCurrency(item.price)} / ly</small>
+                  </div>
+                  <button
+                    className="cart-v2-remove"
+                    type="button"
+                    onClick={() => removeFromCart(item.id)}
+                    aria-label={`Xóa ${item.name}`}
+                  >🗑</button>
+                </div>
+              ))}
+              <Link href="/menu" className="cart-v2-continue">← Tiếp tục mua sắm</Link>
             </section>
 
             {/* Right: Summary */}
-            <section className="panel cart-summary-panel">
-              <h2>Tóm tắt đơn hàng</h2>
+            <section className="cart-v2-summary-panel">
+              <h2 className="cart-v2-summary-title">Tóm tắt đơn hàng</h2>
 
-              <div className="cart-summary-rows">
-                <div className="cart-summary-row">
-                  <span>Tạm tính ({totalQuantity} sản phẩm)</span>
-                  <span>{formatCurrency(cartTotal)}</span>
-                </div>
-                <div className="cart-summary-row">
-                  <span>Phí giao hàng</span>
-                  <span className={SHIPPING_FEE === 0 ? 'text-green' : ''}>
-                    {SHIPPING_FEE === 0 ? 'Miễn phí 🎉' : formatCurrency(SHIPPING_FEE)}
-                  </span>
-                </div>
-                {SHIPPING_FEE > 0 && (
-                  <p className="cart-shipping-hint">
-                    {cartTotal < 200000 && <>Mua thêm {formatCurrency(200000 - cartTotal)} để được miễn phí ship!</>}
-                  </p>
-                )}
-                {appliedVoucher?.type === 'percent' && discount > 0 && (
-                  <div className="cart-summary-row text-green">
-                    <span>Giảm giá ({appliedVoucher?.code})</span>
-                    <span>-{formatCurrency(discount)}</span>
-                  </div>
-                )}
-                {appliedVoucher?.type === 'shipping' && voucherShippingDiscount > 0 && <div className="cart-summary-row text-green"><span>Giảm phí vận chuyển ({appliedVoucher.code})</span><span>-{formatCurrency(voucherShippingDiscount)}</span></div>}
-              </div>
-
-              {/* Voucher input */}
-              <div className="voucher-row">
-                <span className="voucher-label">🎟️</span>
+              {/* Voucher */}
+              <div className="cart-v2-voucher-row">
                 <input
                   type="text"
-                  placeholder="Nhập mã voucher"
+                  placeholder="Nhập mã giảm giá..."
                   value={voucher}
                   onChange={(e) => { setVoucher(e.target.value); setVoucherError(''); }}
                   disabled={Boolean(appliedVoucher)}
-                  className="voucher-input"
+                  className="cart-v2-voucher-input"
                 />
                 <button
-                  className="btn btn-primary"
+                  className="cart-v2-voucher-btn"
                   type="button"
                   onClick={handleApplyVoucher}
                   disabled={Boolean(appliedVoucher) || !voucher}
                 >
-                  {appliedVoucher ? '✓' : 'Áp dụng'}
+                  {appliedVoucher ? '✓' : 'Áp Dụng'}
                 </button>
               </div>
               {voucherError && <p className="form-status form-status-error" role="alert">{voucherError}</p>}
               {appliedVoucher && <p className="form-status form-status-success" role="status">Đã áp dụng {appliedVoucher.code}. <button className="text-button" type="button" onClick={() => { removeVoucher(); setVoucher(''); }}>Gỡ mã</button></p>}
 
-              <div className="cart-total-row">
-                <span>Tổng cộng</span>
-                <strong>{formatCurrency(finalTotal)}</strong>
+              <div className="cart-v2-rows">
+                <div className="cart-v2-row">
+                  <span>Tạm tính</span>
+                  <span>{formatCurrency(cartTotal)}</span>
+                </div>
+                <div className="cart-v2-row">
+                  <span>Phí vận chuyển</span>
+                  <span className={SHIPPING_FEE === 0 ? 'cart-v2-free' : ''}>
+                    {SHIPPING_FEE === 0 ? 'Miễn phí' : formatCurrency(SHIPPING_FEE)}
+                  </span>
+                </div>
+                {appliedVoucher?.type === 'percent' && discount > 0 && (
+                  <div className="cart-v2-row cart-v2-discount-row">
+                    <span>Giảm giá thành viên ({appliedVoucher.value}%)</span>
+                    <span>-{formatCurrency(discount)}</span>
+                  </div>
+                )}
+                {appliedVoucher?.type === 'shipping' && voucherShippingDiscount > 0 && (
+                  <div className="cart-v2-row cart-v2-discount-row">
+                    <span>Giảm phí vận chuyển ({appliedVoucher.code})</span>
+                    <span>-{formatCurrency(voucherShippingDiscount)}</span>
+                  </div>
+                )}
               </div>
-              <button className="btn btn-ghost full-width" type="button" disabled={reconciling || cartItems.length === 0} onClick={handleRefreshCart}>{reconciling ? 'Đang đồng bộ giá…' : 'Đồng bộ giá và tồn kho'}</button>
-              {reconcileMessage && <p className="form-status form-status-success" role="status">{reconcileMessage}</p>}
+
+              <div className="cart-v2-total-row">
+                <span>Tổng cộng</span>
+                <strong className="cart-v2-total-amount">{formatCurrency(finalTotal)}</strong>
+              </div>
 
               <button
-                className="btn btn-primary full-width checkout-glow"
+                className="cart-v2-checkout-btn"
                 type="button"
                 id="proceed-checkout-btn"
                 onClick={handleCheckout}
               >
-                {user
-                  ? `🛍️ Tiến hành đặt hàng · ${formatCurrency(finalTotal)}`
-                  : '🔒 Đăng nhập để đặt hàng'}
+                {user ? 'Tiến Hành Thanh Toán' : '🔒 Đăng nhập để đặt hàng'}
               </button>
+              <p className="cart-v2-guarantee">Cam kết nguyên chất 100% tự nhiên • Ép lạnh tươi mới trong ngày</p>
 
-              <Link href="/menu" className="btn btn-ghost full-width" style={{ marginTop: '0.75rem' }}>
-                ← Tiếp tục mua sắm
-              </Link>
+              <button className="btn btn-ghost full-width" type="button" disabled={reconciling || cartItems.length === 0} onClick={handleRefreshCart} style={{ marginTop: '0.5rem', fontSize: '0.78rem' }}>
+                {reconciling ? 'Đang đồng bộ giá…' : 'Đồng bộ giá và tồn kho'}
+              </button>
+              {reconcileMessage && <p className="form-status form-status-success" role="status">{reconcileMessage}</p>}
             </section>
           </div>
         )}

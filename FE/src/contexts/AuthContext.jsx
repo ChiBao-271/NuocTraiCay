@@ -46,7 +46,9 @@ export function AuthProvider({ children }) {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       const sessionUser = session?.user ?? null;
       setUser(sessionUser);
-      setUserRole(sessionUser ? 'customer' : null);
+      // Keep role unresolved until the profile lookup finishes. AdminShell must
+      // not redirect an admin during this short authentication-state window.
+      setUserRole(null);
       if (sessionUser && session?.access_token) {
         // Avoid awaiting another Supabase request inside its auth-state callback.
         queueMicrotask(() => fetchUserRole(sessionUser.id, session.access_token).then(setUserRole));
@@ -149,7 +151,6 @@ export function AuthProvider({ children }) {
       signUp,
       signOut,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, userRole, loading],
   );
 

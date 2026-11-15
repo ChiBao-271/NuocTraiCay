@@ -17,7 +17,7 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cod');
-  const orderSubmittedRef = useRef(false);
+  const [orderSubmitted, setOrderSubmitted] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -117,7 +117,7 @@ export default function CheckoutPage() {
         setStatus('Đơn đã được tạo nhưng chưa nhận được thông tin chuyển sang SePay. Vui lòng liên hệ cửa hàng trước khi đặt lại.');
         return;
       }
-      orderSubmittedRef.current = true;
+      setOrderSubmitted(true);
       clearCart();
       const paymentForm = document.createElement('form');
       paymentForm.method = checkout.method;
@@ -135,9 +135,9 @@ export default function CheckoutPage() {
       return;
     }
 
-    orderSubmittedRef.current = true;
+    setOrderSubmitted(true);
     clearCart();
-    router.push('/order-success');
+    router.push('/cod-success');
   };
 
   const baseShipping = cartTotal >= 200000 ? 0 : 20000;
@@ -163,7 +163,7 @@ export default function CheckoutPage() {
     );
   }
 
-  if (isCartLoaded && cartItems.length === 0 && !orderSubmittedRef.current) {
+  if (isCartLoaded && cartItems.length === 0 && !orderSubmitted) {
     return (
       <div className="site-shell page-shell">
         <div className="ambient ambient-one" />

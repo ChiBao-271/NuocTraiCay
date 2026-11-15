@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthModal } from '../components/AuthModal.jsx';
 import { Header } from '../components/Header.jsx';
 import { fallbackProducts } from '../services/productService.js';
@@ -90,11 +90,12 @@ const FILTER_TABS = [
 
 function CountdownTimer() {
   const [time, setTime] = useState({ days: 2, hours: 14, minutes: 35 });
+  const endAt = useRef(null);
 
   useEffect(() => {
-    const endAt = Date.now() + ((time.days * 24 + time.hours) * 60 + time.minutes) * 60_000;
+    endAt.current = Date.now() + ((2 * 24 + 14) * 60 + 35) * 60_000;
     const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((endAt - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.floor((endAt.current - Date.now()) / 1000));
       const days = Math.floor(remaining / 86400);
       const hours = Math.floor((remaining % 86400) / 3600);
       const minutes = Math.floor((remaining % 3600) / 60);
