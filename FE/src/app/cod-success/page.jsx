@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '../../components/Header.jsx';
 import { formatCurrency } from '../../services/productService.js';
+import './cod-success.css';
 
 function formatDate(value) {
   const date = value ? new Date(value) : new Date();
