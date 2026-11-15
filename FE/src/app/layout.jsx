@@ -1,6 +1,7 @@
 import { AuthProvider } from '../contexts/AuthContext.jsx';
 import { CartProvider } from '../contexts/CartContext.jsx';
 import '../styles.css';
+import '../styles/storefront-polish.css';
 
 export const metadata = {
   title: 'FreshFruit Shop',

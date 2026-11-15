@@ -9,6 +9,11 @@ export function Hero({ onShopNow }) {
       <span className="hero-floating-fruit fruit-1">🍓</span>
       <span className="hero-floating-fruit fruit-2">🍃</span>
       <span className="hero-floating-fruit fruit-3">🍊</span>
+      <span className="hero-floating-fruit fruit-4" aria-hidden="true">🍓</span>
+      <span className="hero-floating-fruit fruit-5" aria-hidden="true">🍃</span>
+      <span className="hero-floating-fruit fruit-6" aria-hidden="true">🍓</span>
+      <span className="hero-floating-fruit fruit-7" aria-hidden="true">🍃</span>
+      <span className="hero-floating-fruit fruit-8" aria-hidden="true">🍓</span>
 
       {/* Left: Main promo */}
       <div className="hero-v2-main">

@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { useCart } from '../contexts/CartContext.jsx';
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { fetchProducts } from '../services/productService.js';
 
 const NAV_LINKS = [
   { href: '/', label: 'Trang Chủ', exact: true },
@@ -17,6 +19,41 @@ function HeaderInner() {
   const { totalQuantity } = useCart();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const [search, setSearch] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchWrap = useRef(null);
+
+  useEffect(() => {
+    const term = search.trim();
+    if (!term) { setSuggestions([]); setSearchOpen(false); setSearchLoading(false); return undefined; }
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setSearchLoading(true);
+      const result = await fetchProducts({ search: term, limit: 6 });
+      if (!active) return;
+      setSuggestions(result.data || []);
+      setSearchOpen(true);
+      setSearchLoading(false);
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [search]);
+
+  useEffect(() => {
+    const closeOnOutside = (event) => { if (!searchWrap.current?.contains(event.target)) setSearchOpen(false); };
+    document.addEventListener('pointerdown', closeOnOutside);
+    return () => document.removeEventListener('pointerdown', closeOnOutside);
+  }, []);
+
+  const submitSearch = (event) => {
+    event.preventDefault();
+    const term = search.trim();
+    if (!term) return;
+    setSearchOpen(false);
+    router.push(`/menu?search=${encodeURIComponent(term)}`);
+  };
 
   const displayName =
     user?.user_metadata?.full_name ||
@@ -60,7 +97,7 @@ function HeaderInner() {
       </nav>
 
       {/* Search bar */}
-      <div className="header-search-wrap">
+      <form className="header-search-wrap" ref={searchWrap} onSubmit={submitSearch} role="search">
         <svg className="header-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
           <circle cx="11" cy="11" r="8"/>
           <path d="m21 21-4.35-4.35"/>
@@ -68,10 +105,19 @@ function HeaderInner() {
         <input
           type="text"
           className="header-search-input"
-          placeholder="Tìm kiếm nước ép..."
+          placeholder="Tìm sản phẩm..."
           aria-label="Tìm kiếm sản phẩm"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          onFocus={() => { if (search.trim()) setSearchOpen(true); }}
+          onKeyDown={(event) => { if (event.key === 'Escape') setSearchOpen(false); }}
+          autoComplete="off"
         />
-      </div>
+        {searchOpen && <div className="header-search-results" role="listbox" aria-label="Gợi ý sản phẩm">
+          {searchLoading ? <div className="header-search-empty">Đang tìm sản phẩm…</div> : suggestions.length ? suggestions.map((product) => <Link key={product.id} href={`/product/${product.id}`} className="header-search-result" role="option" onClick={() => { setSearchOpen(false); setSearch(''); }}><span className="header-search-result-image">{product.imageUrl ? <img src={product.imageUrl} alt="" /> : product.image || '🍓'}</span><span className="header-search-result-copy"><strong>{product.name}</strong><small>{product.categoryName || product.category}</small></span><strong className="header-search-result-price">{new Intl.NumberFormat('vi-VN').format(product.price)}đ</strong></Link>) : <div className="header-search-empty">Không tìm thấy sản phẩm “{search.trim()}”.</div>}
+          {!searchLoading && <button className="header-search-all" type="submit">Xem tất cả kết quả cho “{search.trim()}” ↗</button>}
+        </div>}
+      </form>
 
       {/* Actions */}
       <div className="header-actions-v2">

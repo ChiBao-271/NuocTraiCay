@@ -24,10 +24,16 @@ export default function MenuPage() {
   const { addToCart, totalQuantity } = useCart();
   const router = useRouter();
   const [dataSource, setDataSource] = useState('loading');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setSearchQuery(new URLSearchParams(window.location.search).get('search') || '');
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    fetchProducts()
+    setLoading(true);
+    fetchProducts({ search: searchQuery })
       .then(({ data, source }) => {
         if (!mounted) return;
         setProducts(data || []);
@@ -44,7 +50,7 @@ export default function MenuPage() {
         if (mounted) setLoading(false);
       });
     return () => { mounted = false; };
-  }, [addToast]);
+  }, [addToast, searchQuery]);
 
   const filteredProducts = useMemo(() => {
     if (activeCategory === 'all') return products;
@@ -71,7 +77,7 @@ export default function MenuPage() {
         <div className="menu-banner">
           <div className="menu-banner-content">
             <span className="menu-banner-badge">MÙA NÀO THỨC ĐÓ</span>
-            <h1 className="menu-banner-title">Vườn Trái Cây Nhiệt Đới Tươi Sạch</h1>
+            <h1 className="menu-banner-title">{searchQuery ? `Kết quả tìm kiếm: ${searchQuery}` : 'Vườn Trái Cây Nhiệt Đới Tươi Sạch'}</h1>
             <p className="menu-banner-desc">Cam kết 100% trái cây chín tự nhiên, không hóa chất bảo quản, thu hoạch trực tiếp từ các hợp tác xã hàng đầu Việt Nam và nhập khẩu chính ngạch.</p>
           </div>
           <div className="menu-banner-art">🍇🥭🍓</div>

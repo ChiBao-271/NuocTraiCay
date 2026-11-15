@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { formatCurrency } from '../../services/productService.js';
 
 export default function CartPage() {
-  const { cartItems, cartTotal, changeQuantity, removeFromCart, clearCart, totalQuantity, appliedVoucher, applyVoucher, removeVoucher, replaceCartItems } = useCart();
+  const { cartItems, cartTotal, changeQuantity, removeFromCart, totalQuantity, appliedVoucher, applyVoucher, removeVoucher } = useCart();
   const { user } = useAuth();
   const [voucher, setVoucher] = useState('');
   const [voucherError, setVoucherError] = useState('');
@@ -31,21 +31,6 @@ export default function CartPage() {
     } else {
       setVoucherError('Mã voucher không hợp lệ. Thử FRESH10 hoặc FREESHIP30.');
     }
-  };
-
-  const [reconciling, setReconciling] = useState(false);
-  const [reconcileMessage, setReconcileMessage] = useState('');
-  const handleRefreshCart = async () => {
-    setReconciling(true); setReconcileMessage('');
-    try {
-      const refreshed = await Promise.all(cartItems.map(async (item) => {
-        const { getProductById } = await import('../../services/productService.js');
-        const result = await getProductById(item.id);
-        return result?.data ? { ...item, ...result.data, quantity: item.quantity } : item;
-      }));
-      replaceCartItems(refreshed);
-      setReconcileMessage('Giá và tồn kho đã được làm mới từ catalog hiện tại.');
-    } finally { setReconciling(false); }
   };
 
   const handleCheckout = () => {
@@ -188,10 +173,6 @@ export default function CartPage() {
               </button>
               <p className="cart-v2-guarantee">Cam kết nguyên chất 100% tự nhiên • Ép lạnh tươi mới trong ngày</p>
 
-              <button className="btn btn-ghost full-width" type="button" disabled={reconciling || cartItems.length === 0} onClick={handleRefreshCart} style={{ marginTop: '0.5rem', fontSize: '0.78rem' }}>
-                {reconciling ? 'Đang đồng bộ giá…' : 'Đồng bộ giá và tồn kho'}
-              </button>
-              {reconcileMessage && <p className="form-status form-status-success" role="status">{reconcileMessage}</p>}
             </section>
           </div>
         )}
