@@ -7,7 +7,7 @@ import { AuthModal } from '../../components/AuthModal.jsx';
 import { useCart } from '../../contexts/CartContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import Link from 'next/link';
-import { createOrder, createSePayCheckout, formatCurrency, getProductById } from '../../services/productService.js';
+import { createOrder, createSePayCheckout, formatCurrency, getProductById, getUserProfile } from '../../services/productService.js';
 
 export default function CheckoutPage() {
   const { cartItems, cartTotal, clearCart, appliedVoucher, hydrateVoucher, replaceCartItems, isCartLoaded } = useCart();
@@ -25,6 +25,18 @@ export default function CheckoutPage() {
     address: '',
     note: '',
   });
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let active = true;
+    getUserProfile(user.id).then(({ data }) => {
+      if (!active || !data) return;
+      setFormData((current) => ({ ...current, fullName: current.fullName || data.full_name || '', phone: current.phone || data.phone || '' }));
+    }).catch((error) => {
+      console.warn('[Checkout] Could not load profile defaults:', error.message);
+    });
+    return () => { active = false; };
+  }, [user?.id]);
 
   useEffect(() => {
     if (user) {

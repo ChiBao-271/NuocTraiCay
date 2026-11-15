@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
 import { config } from '../config/env.js';
 
-// SePay Payment Gateway requires this exact canonical order when verifying
-// the checkout HMAC; signing the same values in another order is rejected.
-const SIGNED_FIELDS = ['order_amount','merchant','currency','operation','order_description','order_invoice_number','customer_id','payment_method','success_url','error_url','cancel_url'];
+// Keep the signed field whitelist aligned with SePay's current form-checkout
+// specification. Fields not supplied by checkout (e.g. customer_id and
+// payment_method) are omitted from both signature input and submitted form.
+const SIGNED_FIELDS = ['merchant','operation','order_amount','currency','order_invoice_number','order_description','success_url','error_url','cancel_url'];
 
 function requiredEnv(name) {
   const value = config[name];
@@ -41,26 +42,28 @@ export function getSePayIpnConfig() {
 }
 
 function signFields(fields, secret) {
-  const signed = SIGNED_FIELDS.filter((key) => Object.hasOwn(fields, key) && fields[key] !== '' && fields[key] !== 0 && fields[key] !== '0').map((key) => `${key}=${fields[key]}`);
+  const signed = SIGNED_FIELDS
+    .filter((key) => Object.hasOwn(fields, key) && fields[key] !== '' && fields[key] !== null && fields[key] !== undefined)
+    .map((key) => `${key}=${fields[key]}`);
   return crypto.createHmac('sha256', secret).update(signed.join(',')).digest('base64');
 }
 
-export function buildSePayCheckoutForm({ orderCode, amount, customerId, description = '' }) {
+export function buildSePayCheckoutForm({ orderCode, amount, description = '' }) {
   const { merchantId, secret, checkoutUrl, frontendUrl } = getSePayCheckoutConfig();
+  // Only post the nine documented fields so the submitted form contains
+  // exactly the same fields as the signed string (SePay rejects a mismatch
+  // between posted fields and the signature payload).
   const fields = {
-    order_amount: String(Math.trunc(amount)),
     merchant: merchantId,
-    currency: 'VND',
     operation: 'PURCHASE',
-    order_description: String(description || `Thanh toan don ${orderCode}`).slice(0, 250),
+    order_amount: String(Math.trunc(amount)),
+    currency: 'VND',
     order_invoice_number: orderCode,
+    order_description: String(description || `Thanh toan don ${orderCode}`).slice(0, 250),
     success_url: `${frontendUrl}/order-success?payment=pending&order=${encodeURIComponent(orderCode)}`,
     error_url: `${frontendUrl}/checkout?payment=error&order=${encodeURIComponent(orderCode)}`,
     cancel_url: `${frontendUrl}/checkout?payment=cancel&order=${encodeURIComponent(orderCode)}`,
-    lang: 'vi',
   };
-  if (config.sepayPaymentMethod) fields.payment_method = config.sepayPaymentMethod;
-  if (customerId) fields.customer_id = String(customerId);
   return { action: checkoutUrl, method: 'POST', fields: { ...fields, signature: signFields(fields, secret) } };
 }
 
