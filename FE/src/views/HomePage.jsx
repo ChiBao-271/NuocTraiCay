@@ -7,6 +7,7 @@ import { Hero } from '../components/Hero.jsx';
 import { ToastContainer } from '../components/Toast.jsx';
 import { useToast } from '../hooks/useToast.js';
 import { useCart } from '../contexts/CartContext.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
 import Link from 'next/link';
 import { fetchProducts, formatCurrency } from '../services/productService.js';
 
@@ -46,18 +47,23 @@ function getBadgeClass(badge) {
 export default function HomePageView() {
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogRetry, setCatalogRetry] = useState(0);
   const [activePill, setActivePill] = useState(0);
   const { toasts, addToast, removeToast } = useToast();
   const { addToCart, isCartLoaded } = useCart();
+  const { userRole, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     let mounted = true;
+    setLoadingProducts(true);
     fetchProducts()
-      .then(({ data, source }) => {
+      .then(({ data, source, error }) => {
         if (!mounted) return;
         setProducts(data || []);
-        if (source === 'unavailable') addToast({ message: 'Chưa kết nối được catalog thật. Vui lòng thử tải lại sau.', type: 'error', duration: 5000 });
+        setCatalogError(source === 'unavailable' ? (error?.message || 'Backend không trả được danh sách sản phẩm.') : '');
+        if (source === 'unavailable') addToast({ message: 'Không tải được catalog thật. Admin có thể mở quản trị và thử tải lại sản phẩm.', type: 'error', duration: 9000 });
       })
       .catch(() => {
         if (!mounted) return;
@@ -68,7 +74,7 @@ export default function HomePageView() {
         if (mounted) setLoadingProducts(false);
       });
     return () => { mounted = false; };
-  }, [addToast]);
+  }, [addToast, catalogRetry]);
 
   const activeCat = CATEGORY_PILLS[activePill]?.id ?? 'all';
   const filteredProducts = activeCat === 'all'
@@ -132,6 +138,14 @@ export default function HomePageView() {
             </div>
             <Link href="/menu" className="btn btn-ghost btn-sm" id="home-see-all-btn">Xem tất cả &rsaquo;</Link>
           </div>
+          {!loadingProducts && products.length === 0 && (
+            <div className="panel admin-home-catalog-alert" role="status">
+              <strong>Catalog chưa tải được sản phẩm.</strong>
+              <p>{catalogError || 'Chưa có sản phẩm đang bật bán trong catalog.'}</p>
+              <button type="button" className="btn btn-ghost" onClick={() => setCatalogRetry((attempt) => attempt + 1)} disabled={loadingProducts}>Thử tải lại catalog</button>
+              {userRole === 'admin' && <Link href="/admin/products" className="btn btn-primary">Mở quản lý sản phẩm</Link>}
+            </div>
+          )}
 
           {loadingProducts ? (
             <div className="home-product-grid">

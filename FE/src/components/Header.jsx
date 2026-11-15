@@ -13,7 +13,7 @@ const NAV_LINKS = [
 ];
 
 function HeaderInner() {
-  const { user, signOut } = useAuth();
+  const { user, userRole, loading, signOut } = useAuth();
   const { totalQuantity } = useCart();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -89,6 +89,11 @@ function HeaderInner() {
         {/* User / Auth */}
         {user ? (
           <div className="header-user-v2">
+            {!loading && userRole === 'admin' && (
+              <Link href="/admin" className="btn btn-primary header-admin-entry" aria-label="Vào trang quản trị" style={{ padding: '0.55rem 0.85rem', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+                ⚙️ Quản trị
+              </Link>
+            )}
             <div className="header-avatar-v2" title={displayName}>
               {initials}
             </div>

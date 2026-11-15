@@ -40,21 +40,24 @@ export default function AdminDashboardPage() {
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let active = true;
     fetchAdminDashboard().then(({ data, error: err }) => {
+      if (!active) return;
       if (err || !data) {
-        // Nếu BE chưa kết nối, dùng demo data
-        setStats(getDemoStats());
-        setRecentOrders(getDemoOrders());
-        setError('Không kết nối được BE, hiển thị dữ liệu mẫu.');
+        setStats(null);
+        setRecentOrders([]);
+        setError(err?.message || 'Không tải được dữ liệu quản trị từ backend.');
       } else {
         setStats(data.stats);
         setRecentOrders(data.recentOrders);
       }
       setLoading(false);
     });
-  }, []);
+    return () => { active = false; };
+  }, [reloadKey]);
 
   if (loading) {
     return (
@@ -82,14 +85,15 @@ export default function AdminDashboardPage() {
           </div>
         )}
         {error && (
-          <div className="admin-alert-chip" style={{ background: '#fef3c7', color: '#92400e' }}>
-            ⚠️ {error}
+          <div className="admin-alert-chip" role="alert" style={{ background: '#fef3c7', color: '#92400e' }}>
+            <span>⚠️ {error}</span>
+            <button type="button" className="btn btn-ghost" onClick={() => { setLoading(true); setError(null); setReloadKey((value) => value + 1); }}>Thử tải lại</button>
           </div>
         )}
       </div>
 
       {/* Stats */}
-      <div className="admin-stats-grid">
+      {!error && <div className="admin-stats-grid">
         <StatCard
           icon="💰"
           label="Doanh thu tháng này"
@@ -118,10 +122,10 @@ export default function AdminDashboardPage() {
           sub="Đang kinh doanh"
           color="#f59e0b"
         />
-      </div>
+      </div>}
 
       {/* Recent Orders */}
-      <div className="admin-panel">
+      {!error && <div className="admin-panel">
         <div className="admin-panel-head">
           <SectionHeader title="Đơn hàng gần đây" icon="📦" />
           <a href="/admin/orders" className="btn btn-ghost">Xem tất cả →</a>
@@ -175,22 +179,7 @@ export default function AdminDashboardPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
     </div>
   );
-}
-
-/* ── Demo fallback khi BE chưa kết nối ──────────────────────── */
-function getDemoStats() {
-  return { totalOrders: 128, pendingOrders: 5, monthOrders: 34, monthRevenue: 8_500_000, totalCustomers: 97, totalProducts: 12 };
-}
-
-function getDemoOrders() {
-  return [
-    { id: '1', order_code: 'FS-0001', recipient_name: 'Nguyễn Văn A', total_amount: 285000, order_status: 'pending', created_at: new Date().toISOString() },
-    { id: '2', order_code: 'FS-0002', recipient_name: 'Trần Thị B', total_amount: 159000, order_status: 'delivered', created_at: new Date().toISOString() },
-    { id: '3', order_code: 'FS-0003', recipient_name: 'Lê Văn C', total_amount: 420000, order_status: 'shipping', created_at: new Date().toISOString() },
-    { id: '4', order_code: 'FS-0004', recipient_name: 'Phạm Thị D', total_amount: 109000, order_status: 'confirmed', created_at: new Date().toISOString() },
-    { id: '5', order_code: 'FS-0005', recipient_name: 'Hoàng Văn E', total_amount: 229000, order_status: 'cancelled', created_at: new Date().toISOString() },
-  ];
 }
