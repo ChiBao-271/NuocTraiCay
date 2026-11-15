@@ -37,20 +37,6 @@ export default function CheckoutPage() {
     }
   }, [user]);
 
-  // Redirect if not logged in or cart is empty
-  useEffect(() => {
-    // CartProvider hydrates the signed-in user's cart from localStorage after
-    // auth resolves. Before that, cartItems is temporarily empty; redirecting
-    // during this window sends a valid checkout straight back to /menu.
-    if (!user || !isCartLoaded) return;
-    // A successful order intentionally clears the cart. Do not let this
-    // checkout guard race the navigation to the receipt page.
-    if (orderSubmittedRef.current) return;
-    if (cartItems.length === 0) {
-      router.replace('/menu');
-    }
-  }, [cartItems, user, isCartLoaded, router]);
-
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     if (status) setStatus('');
@@ -173,6 +159,22 @@ export default function CheckoutPage() {
           </button>
         </main>
         {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}
+      </div>
+    );
+  }
+
+  if (isCartLoaded && cartItems.length === 0 && !orderSubmittedRef.current) {
+    return (
+      <div className="site-shell page-shell">
+        <div className="ambient ambient-one" />
+        <Header onLoginClick={() => setIsAuthOpen(true)} />
+        <main className="page-main" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+          <section className="panel" style={{ maxWidth: 560, margin: '0 auto', padding: '2rem' }}>
+            <h1>Giỏ hàng đang trống</h1>
+            <p>Thêm sản phẩm vào giỏ trước khi thanh toán. Nếu bạn vừa đăng nhập, hãy quay lại giỏ để kiểm tra sản phẩm đã được tải chưa.</p>
+            <Link href="/cart" className="btn btn-primary" style={{ marginTop: '1rem' }}>Quay lại giỏ hàng</Link>
+          </section>
+        </main>
       </div>
     );
   }
