@@ -10,7 +10,10 @@ export const config = {
   sepayMerchantId: process.env.SEPAY_MERCHANT_ID,
   sepaySecretKey: process.env.SEPAY_SECRET_KEY,
   sepayIpnSecret: process.env.SEPAY_IPN_SECRET_KEY,
-  sepayPaymentMethod: process.env.SEPAY_PAYMENT_METHOD || 'BANK_TRANSFER',
+  // Leave payment method unset by default so SePay can use the merchant's
+  // enabled method(s) or render its method selector. Set explicitly only
+  // after that method is enabled for this merchant/environment.
+  sepayPaymentMethod: process.env.SEPAY_PAYMENT_METHOD || '',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   publicApiUrl: process.env.PUBLIC_API_URL,
 };
