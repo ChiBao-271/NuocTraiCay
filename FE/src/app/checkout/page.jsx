@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '../../components/Header.jsx';
 import { AuthModal } from '../../components/AuthModal.jsx';
@@ -17,6 +17,7 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cod');
+  const orderSubmittedRef = useRef(false);
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -39,6 +40,9 @@ export default function CheckoutPage() {
   // Redirect if not logged in or cart is empty
   useEffect(() => {
     if (!user) return; // wait for auth
+    // A successful order intentionally clears the cart. Do not let this
+    // checkout guard race the navigation to the receipt page.
+    if (orderSubmittedRef.current) return;
     if (cartItems.length === 0) {
       router.replace('/menu');
     }
@@ -124,6 +128,7 @@ export default function CheckoutPage() {
         setStatus('Đơn đã được tạo nhưng chưa nhận được thông tin chuyển sang SePay. Vui lòng liên hệ cửa hàng trước khi đặt lại.');
         return;
       }
+      orderSubmittedRef.current = true;
       clearCart();
       const paymentForm = document.createElement('form');
       paymentForm.method = checkout.method;
@@ -141,6 +146,7 @@ export default function CheckoutPage() {
       return;
     }
 
+    orderSubmittedRef.current = true;
     clearCart();
     router.push('/order-success');
   };
