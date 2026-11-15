@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { createOrder, createSePayCheckout, formatCurrency, getProductById } from '../../services/productService.js';
 
 export default function CheckoutPage() {
-  const { cartItems, cartTotal, clearCart, appliedVoucher, hydrateVoucher, replaceCartItems } = useCart();
+  const { cartItems, cartTotal, clearCart, appliedVoucher, hydrateVoucher, replaceCartItems, isCartLoaded } = useCart();
   const { user } = useAuth();
   const router = useRouter();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -39,14 +39,17 @@ export default function CheckoutPage() {
 
   // Redirect if not logged in or cart is empty
   useEffect(() => {
-    if (!user) return; // wait for auth
+    // CartProvider hydrates the signed-in user's cart from localStorage after
+    // auth resolves. Before that, cartItems is temporarily empty; redirecting
+    // during this window sends a valid checkout straight back to /menu.
+    if (!user || !isCartLoaded) return;
     // A successful order intentionally clears the cart. Do not let this
     // checkout guard race the navigation to the receipt page.
     if (orderSubmittedRef.current) return;
     if (cartItems.length === 0) {
       router.replace('/menu');
     }
-  }, [cartItems, user, router]);
+  }, [cartItems, user, isCartLoaded, router]);
 
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
