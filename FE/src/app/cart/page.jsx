@@ -6,7 +6,7 @@ import { Header } from '../../components/Header.jsx';
 import { useCart } from '../../contexts/CartContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import Link from 'next/link';
-import { formatCurrency } from '../../services/productService.js';
+import { formatCurrency, validateVoucherCode } from '../../services/productService.js';
 
 export default function CartPage() {
   const { cartItems, cartTotal, changeQuantity, removeFromCart, totalQuantity, appliedVoucher, applyVoucher, removeVoucher } = useCart();
@@ -16,21 +16,39 @@ export default function CartPage() {
   const router = useRouter();
 
   const baseShipping = cartTotal >= 200000 ? 0 : 20000;
-  const SHIPPING_FEE = Math.max(0, baseShipping - (appliedVoucher?.type === 'shipping' ? Math.min(baseShipping, appliedVoucher.value) : 0));
-  const discount = appliedVoucher?.type === 'percent' ? Math.round(cartTotal * appliedVoucher.value / 100) : 0;
+  const SHIPPING_FEE = Number.isFinite(appliedVoucher?.shippingFee)
+    ? Number(appliedVoucher.shippingFee)
+    : Math.max(0, baseShipping - (appliedVoucher?.type === 'shipping' ? Math.min(baseShipping, appliedVoucher.value) : 0));
+  const discount = Number.isFinite(appliedVoucher?.discountAmount)
+    ? Number(appliedVoucher.discountAmount)
+    : appliedVoucher?.type === 'percent'
+      ? Math.round(cartTotal * appliedVoucher.value / 100)
+      : appliedVoucher?.type === 'fixed' ? Math.min(cartTotal, appliedVoucher.value) : 0;
   const voucherShippingDiscount = baseShipping - SHIPPING_FEE;
   const finalTotal = cartTotal + SHIPPING_FEE - discount;
 
-  const handleApplyVoucher = () => {
+  const handleApplyVoucher = async () => {
     const code = voucher.trim().toUpperCase();
-    const vouchers = { FRESH10: { code, type: 'percent', value: 10 }, FREESHIP30: { code, type: 'shipping', value: 30000 } };
-    if (vouchers[code]) {
-      applyVoucher(vouchers[code]);
-      setVoucher(code);
-      setVoucherError('');
-    } else {
-      setVoucherError('Mã voucher không hợp lệ. Thử FRESH10 hoặc FREESHIP30.');
+    if (!code) return;
+    setVoucherError('Đang kiểm tra mã…');
+    const result = await validateVoucherCode(code, cartTotal);
+    if (result.error) {
+      setVoucherError(result.error.message || 'Mã giảm giá không dùng được cho đơn này.');
+      return;
     }
+    const data = result.data;
+    const mappedType = data.discount_type === 'percentage' ? 'percent'
+      : data.discount_type === 'freeship' ? 'shipping'
+      : data.discount_type === 'fixed_amount' ? 'fixed' : 'percent';
+    applyVoucher({
+      code: data.code,
+      type: mappedType,
+      value: Number(data.discount_value || 0),
+      discountAmount: Number(data.discountAmount || 0),
+      shippingFee: Number(data.shippingFee || 0),
+    });
+    setVoucher(data.code);
+    setVoucherError('');
   };
 
   const handleCheckout = () => {
@@ -70,7 +88,9 @@ export default function CartPage() {
               {cartItems.map((item) => (
                 <div className="cart-v2-item" key={item.id}>
                   <div className="cart-v2-img" style={{ background: item.gradient }}>
-                    <span>{item.image}</span>
+                    {item.imageUrl
+                      ? <img src={item.imageUrl} alt={item.name} loading="lazy" />
+                      : <span>{item.image}</span>}
                   </div>
                   <div className="cart-v2-info">
                     <strong className="cart-v2-name">{item.name}</strong>

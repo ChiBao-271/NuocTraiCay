@@ -1,6 +1,7 @@
 import { Router, raw } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { getDashboard, getAllOrders, getAdminOrderDetails, updateOrderStatus, getAdminProducts, getAdminCategories, getAdminCatalogHealth, saveAdminCategory, getAdminUsers, updateAdminUserRole, createAdminProduct, updateAdminProduct, archiveAdminProduct, uploadProductImage } from '../controllers/adminController.js';
+import { createAdminVoucher, deleteAdminVoucher, getAdminVouchers, updateAdminVoucher } from '../controllers/voucherController.js';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
@@ -17,6 +18,10 @@ router.post('/categories', saveAdminCategory);
 router.patch('/categories/:id', saveAdminCategory);
 router.get('/users', getAdminUsers);
 router.patch('/users/:id/role', updateAdminUserRole);
+router.get('/vouchers', getAdminVouchers);
+router.post('/vouchers', createAdminVoucher);
+router.patch('/vouchers/:id', updateAdminVoucher);
+router.delete('/vouchers/:id', deleteAdminVoucher);
 router.post('/products', createAdminProduct);
 router.patch('/products/:id', updateAdminProduct);
 router.delete('/products/:id', archiveAdminProduct);

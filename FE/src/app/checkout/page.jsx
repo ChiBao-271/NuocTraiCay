@@ -153,7 +153,9 @@ export default function CheckoutPage() {
   };
 
   const baseShipping = cartTotal >= 200000 ? 0 : 20000;
-  const discount = appliedVoucher?.type === 'percent' ? Math.round(cartTotal * appliedVoucher.value / 100) : 0;
+  const discount = appliedVoucher?.type === 'percent'
+    ? Math.round(cartTotal * appliedVoucher.value / 100)
+    : appliedVoucher?.type === 'fixed' ? Math.min(cartTotal, appliedVoucher.value) : 0;
   const shippingDiscount = appliedVoucher?.type === 'shipping' ? Math.min(baseShipping, appliedVoucher.value) : 0;
   const SHIPPING_FEE = baseShipping - shippingDiscount;
   const voucherShippingDiscount = shippingDiscount;

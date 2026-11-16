@@ -110,9 +110,9 @@ export default function AdminDashboardPage() {
         <div className="admin-stats-grid">
           <StatCard
             icon="💰"
-            label="Doanh thu tháng này"
-            value={formatCurrency(stats?.monthRevenue ?? 0)}
-            sub={(stats?.monthOrders ?? 0) + ' đơn · đã thu ' + formatCurrency(stats?.monthPaidRevenue ?? 0)}
+            label="Doanh thu đã thu"
+            value={formatCurrency(stats?.monthPaidRevenue ?? 0)}
+            sub={'Giá trị đơn trong tháng: ' + formatCurrency(stats?.monthRevenue ?? 0)}
             color="#22c55e"
           />
           <StatCard

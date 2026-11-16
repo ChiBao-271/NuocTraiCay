@@ -65,7 +65,7 @@ export default function AdminReportsPage() {
   };
 
   const cards = [
-    ['Doanh thu tháng này', formatCurrency(stats?.monthRevenue || 0), `Đã thu: ${formatCurrency(stats?.monthPaidRevenue || 0)}`],
+    ['Doanh thu đã thu', formatCurrency(stats?.monthPaidRevenue || 0), `Giá trị đơn tháng: ${formatCurrency(stats?.monthRevenue || 0)}`],
     ['Đơn hàng tháng này', stats?.monthOrders || 0, 'Tính cả đơn chưa thanh toán'],
     ['Tổng đơn hàng', stats?.totalOrders || 0, `${stats?.pendingOrders || 0} đơn chờ xử lý`],
     ['Khách hàng', stats?.totalCustomers || 0, 'Tổng tài khoản khách'],

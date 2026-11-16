@@ -164,11 +164,80 @@ export const categories = [
 // ──────────────────────────────────────────────────────
 //  fetchProducts — gọi BE API, fallback local nếu lỗi
 // ──────────────────────────────────────────────────────
+// Bỏ dấu tiếng Việt để tìm kiếm "xoai" vẫn ra "Xoài", "dau" ra "Dâu Tây".
+export function normalizeVi(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
+// Cache catalog 60 giây để ô tìm kiếm gợi ý tức thì, không gọi API mỗi lần gõ.
+let catalogCache = { at: 0, rows: null };
+let catalogPending = null;
+
+export async function fetchAllProducts({ force = false } = {}) {
+  const fresh = catalogCache.rows && Date.now() - catalogCache.at < 60000;
+  if (!force && fresh) return catalogCache.rows;
+  if (!force && catalogPending) return catalogPending;
+  catalogPending = (async () => {
+    const data = await apiFetch('/api/products?limit=100');
+    const rows = Array.isArray(data) ? data : (data?.data ?? []);
+    catalogCache = { at: Date.now(), rows };
+    return rows;
+  })();
+  try {
+    return await catalogPending;
+  } finally {
+    catalogPending = null;
+  }
+}
+
+// Tìm sản phẩm theo tên / danh mục / xuất xứ, không phân biệt dấu và hoa thường.
+export function rankProductMatches(rows, term, limit = 8) {
+  const q = normalizeVi(term);
+  if (!q) return [];
+  const scored = [];
+  for (const product of rows || []) {
+    const name = normalizeVi(product.name);
+    const category = normalizeVi(product.categoryName || product.category);
+    const origin = normalizeVi(product.origin);
+    const extra = normalizeVi([product.description, product.farmingStandard].filter(Boolean).join(' '));
+    let score = 0;
+    if (name.startsWith(q)) score = 100;
+    else if (name.includes(q)) score = 80;
+    else if (name.split(/\s+/).some((word) => word.startsWith(q))) score = 70;
+    else if (category.includes(q)) score = 50;
+    else if (origin.includes(q)) score = 40;
+    else if (extra.includes(q)) score = 20;
+    if (!score) continue;
+    if (product.isBestseller) score += 5;
+    scored.push({ product, score });
+  }
+  return scored
+    .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name, 'vi'))
+    .slice(0, limit)
+    .map((item) => item.product);
+}
+
+export async function searchProductsSmart(term, { limit = 8 } = {}) {
+  const rows = await fetchAllProducts().catch(() => []);
+  return rankProductMatches(rows, term, limit);
+}
+
+export function invalidateCatalogCache() {
+  catalogCache = { at: 0, rows: null };
+}
+
 export async function fetchProducts(params = {}) {
   try {
     const query = new URLSearchParams();
     if (params.category && params.category !== 'all') query.set('category', params.category);
     if (params.search) query.set('search', params.search);
+    if (params.limit) query.set('limit', String(params.limit));
     const queryString = query.toString() ? `?${query.toString()}` : '';
 
     const data = await apiFetch(`/api/products${queryString}`);
@@ -402,6 +471,46 @@ export async function archiveAdminProduct(productId) {
 // ──────────────────────────────────────────────────────
 //  Utility
 // ──────────────────────────────────────────────────────
+// ─── Mã giảm giá (voucher) ───────────────────────────────
+export async function fetchVouchers(subtotal) {
+  try {
+    const query = subtotal ? `?subtotal=${Math.round(Number(subtotal))}` : '';
+    return { data: await apiFetch(`/api/vouchers${query}`), error: null };
+  } catch (error) { return { data: [], error }; }
+}
+
+// Kiểm tra mã thật ở server: trả về số tiền được giảm và tổng sau giảm.
+export async function validateVoucherCode(code, subtotal) {
+  try {
+    const data = await apiFetch('/api/vouchers/validate', {
+      method: 'POST',
+      body: JSON.stringify({ code, subtotal: Math.round(Number(subtotal)) }),
+    });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
+export async function fetchAdminVouchers() {
+  try {
+    const result = await apiFetch('/api/admin/vouchers');
+    return { data: Array.isArray(result) ? result : (result?.data ?? []), error: null };
+  } catch (error) { return { data: [], error }; }
+}
+
+export async function saveAdminVoucher(voucher, originalId = null) {
+  try {
+    const path = originalId ? `/api/admin/vouchers/${encodeURIComponent(originalId)}` : '/api/admin/vouchers';
+    const data = await apiFetch(path, { method: originalId ? 'PATCH' : 'POST', body: JSON.stringify(voucher) });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
+export async function disableAdminVoucher(voucherId) {
+  try {
+    return { data: await apiFetch(`/api/admin/vouchers/${encodeURIComponent(voucherId)}`, { method: 'DELETE' }), error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
 export function formatCurrency(value) {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',

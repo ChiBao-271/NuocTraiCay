@@ -215,7 +215,7 @@ export async function updateOrderStatus(req, res) {
     if (!allowed.includes(order_status)) return res.status(400).json({ success: false, error: 'Trạng thái đơn hàng không hợp lệ.' });
     const transitions = { pending: ['confirmed', 'cancelled'], confirmed: ['preparing', 'shipping', 'cancelled'], preparing: ['shipping', 'cancelled'], shipping: ['completed'], completed: [], cancelled: [] };
     const { data: current, error: currentError } = await req.adminDb
-      .from('orders').select('id, order_code, order_status').eq('id', id).maybeSingle();
+      .from('orders').select('id, order_code, order_status, payment_status, payment_method').eq('id', id).maybeSingle();
     if (currentError) throw currentError;
     if (!current) return res.status(404).json({ success: false, error: 'Không tìm thấy đơn hàng.' });
     if (current.order_status === order_status) return res.json({ success: true, data: current });
@@ -223,11 +223,20 @@ export async function updateOrderStatus(req, res) {
       return res.status(409).json({ success: false, error: 'Không thể chuyển trạng thái đơn hàng theo quy trình hiện tại.' });
     }
 
+    // Đơn COD chỉ thực sự thu tiền khi giao xong: khi admin chuyển đơn sang
+    // "Hoàn tất" thì đồng bộ luôn trạng thái thanh toán để doanh thu tính đúng.
+    const patch = { order_status };
+    const method = String(current.payment_method || '').trim().toLowerCase();
+    if (order_status === 'completed' && method === 'cod' && String(current.payment_status || '').toLowerCase() !== 'paid') {
+      patch.payment_status = 'paid';
+      patch.payment_paid_at = new Date().toISOString();
+    }
+
     const { data, error } = await req.adminDb
       .from('orders')
-      .update({ order_status })
+      .update(patch)
       .eq('id', id)
-      .select('id, order_code, order_status')
+      .select('id, order_code, order_status, payment_status')
       .single();
 
     if (error) throw error;

@@ -6,7 +6,7 @@ import { useCart } from '../contexts/CartContext.jsx';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { fetchProducts } from '../services/productService.js';
+import { searchProductsSmart } from '../services/productService.js';
 
 const NAV_LINKS = [
   { href: '/', label: 'Trang Chủ', exact: true },
@@ -32,9 +32,10 @@ function HeaderInner() {
     let active = true;
     const timer = window.setTimeout(async () => {
       setSearchLoading(true);
-      const result = await fetchProducts({ search: term, limit: 6 });
+      // Gợi ý ngay theo từng ký tự khách gõ, không phân biệt dấu ("xoai" → "Xoài").
+      const matches = await searchProductsSmart(term, { limit: 6 });
       if (!active) return;
-      setSuggestions(result.data || []);
+      setSuggestions(matches || []);
       setSearchOpen(true);
       setSearchLoading(false);
     }, 250);

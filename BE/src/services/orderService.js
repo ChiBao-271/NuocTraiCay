@@ -1,4 +1,5 @@
 import { supabase } from '../supabase/client.js';
+import { baseShippingFee, evaluateVoucher, findVoucherByCode, normalizeVoucherCode } from './voucherService.js';
 import { buildSePayCheckoutForm } from './sepayService.js';
 import crypto from 'node:crypto';
 import { getSePayCheckoutConfig } from './sepayService.js';
@@ -66,27 +67,25 @@ export function calculateSubtotal(items) {
 
 const SHIPPING_FREE_THRESHOLD = 200000;
 const STANDARD_SHIPPING_FEE = 20000;
-const SERVER_VOUCHERS = Object.freeze({
-  FRESH10: { type: 'percent', value: 10, minimum: 0 },
-  FREESHIP30: { type: 'shipping', value: 30000, minimum: 0 },
-});
-
-export function calculateOrderTotals(subtotal, rawVoucherCode = '') {
-  const shippingFee = subtotal >= SHIPPING_FREE_THRESHOLD ? 0 : STANDARD_SHIPPING_FEE;
-  const voucherCode = String(rawVoucherCode || '').trim().toUpperCase();
-  const voucher = voucherCode ? SERVER_VOUCHERS[voucherCode] : null;
-  if (voucherCode && !voucher) throw new Error('Mã voucher không hợp lệ.');
-  if (voucher && subtotal < voucher.minimum) throw new Error('Đơn hàng chưa đạt giá trị tối thiểu của voucher.');
-  const discountAmount = voucher?.type === 'percent'
-    ? Math.min(subtotal, Math.round(subtotal * voucher.value / 100))
-    : voucher?.type === 'shipping' ? Math.min(shippingFee, voucher.value) : 0;
-  const finalShipping = voucher?.type === 'shipping' ? Math.max(0, shippingFee - discountAmount) : shippingFee;
+// Tính lại tổng tiền ở server, đọc mã giảm giá thật từ bảng public.vouchers.
+export async function calculateOrderTotals(subtotal, rawVoucherCode = '', db = supabase) {
+  const amount = Number(subtotal) || 0;
+  const shippingFee = baseShippingFee(amount);
+  const voucherCode = normalizeVoucherCode(rawVoucherCode);
+  if (!voucherCode) {
+    return { subtotal: amount, shippingFee, discountAmount: 0, totalAmount: amount + shippingFee, voucherCode: null };
+  }
+  const voucher = await findVoucherByCode(voucherCode, db);
+  if (voucher && voucher.unavailable) throw new Error('Mã voucher tạm thời chưa dùng được.');
+  if (!voucher) throw new Error('Mã voucher không hợp lệ.');
+  const check = evaluateVoucher(voucher, amount);
+  if (!check.ok) throw new Error(check.reason);
   return {
-    subtotal,
-    shippingFee: finalShipping,
-    discountAmount: voucher?.type === 'shipping' ? 0 : discountAmount,
-    totalAmount: Math.max(0, subtotal + finalShipping - (voucher?.type === 'shipping' ? 0 : discountAmount)),
-    voucherCode: voucher ? voucherCode : null,
+    subtotal: amount,
+    shippingFee: check.shippingFee,
+    discountAmount: check.discountAmount,
+    totalAmount: check.totalAmount,
+    voucherCode,
   };
 }
 
@@ -110,7 +109,7 @@ export async function createOrder({ customer, items, total, note, userId, paymen
     if (product.stock_quantity !== null && product.stock_quantity !== undefined && Number(product.stock_quantity) < quantity) throw new Error(`Sản phẩm hiện không đủ tồn kho: ${product.name}`);
     subtotal += Number(product.price) * quantity;
   }
-  const previewTotal = calculateOrderTotals(subtotal, voucherCode).totalAmount;
+  const previewTotal = (await calculateOrderTotals(subtotal, voucherCode, db)).totalAmount;
   if (Number.isFinite(Number(total)) && Number(total) !== previewTotal) throw new Error(`ORDER_TOTAL_CHANGED:${previewTotal}`);
   const orderCode = generateOrderCode();
   const { data, error } = await db.rpc('create_order_atomic', {

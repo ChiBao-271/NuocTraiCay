@@ -9,22 +9,56 @@ import { AuthModal } from '../../components/AuthModal.jsx';
 import { ToastContainer } from '../../components/Toast.jsx';
 import { useToast } from '../../hooks/useToast.js';
 import { useCart } from '../../contexts/CartContext.jsx';
-import { categories, fetchProducts } from '../../services/productService.js';
+import { categories, fetchAllProducts, normalizeVi, rankProductMatches } from '../../services/productService.js';
 
-const SIDEBAR_CATEGORIES = ['Tất cả', 'Nhiệt đới', 'Có múi', 'Berry', 'Nhập khẩu'];
-const ORIGINS = ['Việt Nam', 'Mỹ', 'Úc', 'Hàn Quốc', 'Nhật Bản'];
+const FRUIT_GROUPS = [
+  { id: 'all', label: 'Tất cả' },
+  { id: 'tropical', label: 'Nhiệt đới' },
+  { id: 'citrus', label: 'Có múi' },
+  { id: 'berry', label: 'Berry' },
+  { id: 'imported', label: 'Nhập khẩu' },
+];
+
+const FRUIT_KEYWORDS = {
+  tropical: ['xoai', 'dua hau', 'thom', 'chuoi', 'mang cut', 'du du', 'thanh long', 'vai', 'chom chom', 'sapoche', 'mit'],
+  citrus: ['buoi', 'cam', 'quyt', 'chanh', 'tac'],
+  berry: ['dau', 'nho', 'viet quat', 'berry', 'cherry', 'blueberry', 'strawberry'],
+};
+
+const IMPORT_HINTS = ['my', 'uc', 'nhat', 'han quoc', 'new zealand', 'usa', 'nhap khau'];
+
+function groupOf(product) {
+  const name = normalizeVi(product.name);
+  const origin = normalizeVi(product.origin);
+  const standard = normalizeVi(product.farmingStandard);
+  if (IMPORT_HINTS.some((hint) => origin.includes(hint) || standard.includes(hint))) return 'imported';
+  for (const [group, keywords] of Object.entries(FRUIT_KEYWORDS)) {
+    if (keywords.some((keyword) => name.includes(keyword))) return group;
+  }
+  return 'tropical';
+}
+
+function priceBounds(products) {
+  if (!products.length) return { min: 0, max: 200000 };
+  const values = products.map((product) => Number(product.price || 0));
+  return { min: Math.min(...values), max: Math.max(...values) };
+}
 
 export default function MenuPage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('all');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [activeOrigin, setActiveOrigin] = useState('Việt Nam');
   const { toasts, addToast, removeToast } = useToast();
   const { addToCart, totalQuantity } = useCart();
   const router = useRouter();
   const [dataSource, setDataSource] = useState('loading');
   const [searchQuery, setSearchQuery] = useState('');
+  const [fruitFilter, setFruitFilter] = useState('all');
+  const [originFilter, setOriginFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('popular');
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 0 });
+  const [priceTouched, setPriceTouched] = useState(false);
 
   useEffect(() => {
     setSearchQuery(new URLSearchParams(window.location.search).get('search') || '');
@@ -33,29 +67,65 @@ export default function MenuPage() {
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    fetchProducts({ search: searchQuery })
-      .then(({ data, source }) => {
+    fetchAllProducts()
+      .then((rows) => {
         if (!mounted) return;
-        setProducts(data || []);
-        setDataSource(source || 'api');
-        if (source === 'unavailable') addToast({ message: 'Chưa kết nối được catalog thật. Vui lòng thử tải lại sau.', type: 'error', duration: 5000 });
+        setProducts(rows || []);
+        setDataSource('api');
+        setPriceRange(priceBounds(rows || []));
       })
       .catch(() => {
         if (!mounted) return;
         setProducts([]);
         setDataSource('unavailable');
-        addToast({ message: 'Không tải được catalog. Vui lòng kiểm tra kết nối và thử lại.', type: 'error', duration: 5000 });
+        addToast({ message: 'Không tải được danh sách sản phẩm. Vui lòng thử tải lại.', type: 'error', duration: 5000 });
       })
       .finally(() => {
         if (mounted) setLoading(false);
       });
     return () => { mounted = false; };
-  }, [addToast, searchQuery]);
+  }, [addToast]);
+
+  const bounds = useMemo(() => priceBounds(products), [products]);
+
+  const origins = useMemo(() => {
+    const unique = new Set();
+    products.forEach((product) => { if (product.origin) unique.add(product.origin); });
+    return Array.from(unique).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [products]);
+
+  const searched = useMemo(() => {
+    const term = searchQuery.trim();
+    if (!term) return products;
+    return rankProductMatches(products, term, products.length || 50);
+  }, [products, searchQuery]);
 
   const filteredProducts = useMemo(() => {
-    if (activeCategory === 'all') return products;
-    return products.filter((p) => p.category === activeCategory);
-  }, [activeCategory, products]);
+    const min = priceTouched ? Math.min(priceRange.min, priceRange.max) : bounds.min;
+    const max = priceTouched ? Math.max(priceRange.min, priceRange.max) : bounds.max;
+    let list = searched.filter((product) => {
+      if (activeCategory !== 'all' && product.category !== activeCategory) return false;
+      if (fruitFilter !== 'all' && groupOf(product) !== fruitFilter) return false;
+      if (originFilter !== 'all' && product.origin !== originFilter) return false;
+      const price = Number(product.price || 0);
+      if (priceTouched && (price < min || price > max)) return false;
+      return true;
+    });
+    if (sortBy === 'price-asc') list = [...list].sort((a, b) => Number(a.price) - Number(b.price));
+    else if (sortBy === 'price-desc') list = [...list].sort((a, b) => Number(b.price) - Number(a.price));
+    else if (sortBy === 'new') list = [...list].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    else list = [...list].sort((a, b) => Number(Boolean(b.isBestseller)) - Number(Boolean(a.isBestseller)) || Number(b.rating || 0) - Number(a.rating || 0));
+    return list;
+  }, [searched, activeCategory, fruitFilter, originFilter, sortBy, priceTouched, priceRange, bounds]);
+
+  const resetFilters = () => {
+    setActiveCategory('all');
+    setFruitFilter('all');
+    setOriginFilter('all');
+    setSortBy('popular');
+    setPriceTouched(false);
+    setPriceRange(bounds);
+  };
 
   const handleAddToCart = (product) => {
     addToCart(product);
@@ -66,6 +136,8 @@ export default function MenuPage() {
     addToast({ message: 'Sản phẩm mẫu chưa có mã catalog hợp lệ nên chưa thể thêm vào giỏ.', type: 'info', duration: 3500 });
   };
 
+  const formatPrice = (value) => new Intl.NumberFormat('vi-VN').format(Math.round(Number(value) || 0)) + 'đ';
+
   return (
     <div className="site-shell page-shell">
       <div className="ambient ambient-one" />
@@ -73,7 +145,6 @@ export default function MenuPage() {
       <Header onLoginClick={() => setIsAuthOpen(true)} />
 
       <main className="page-main">
-        {/* Top Banner */}
         <div className="menu-banner">
           <div className="menu-banner-content">
             <span className="menu-banner-badge">MÙA NÀO THỨC ĐÓ</span>
@@ -83,25 +154,23 @@ export default function MenuPage() {
           <div className="menu-banner-art">🍇🥭🍓</div>
         </div>
 
-        {/* Category pills */}
-        <CategoryFilter
-          categories={categories}
-          activeCategory={activeCategory}
-          onChange={setActiveCategory}
-        />
+        <CategoryFilter categories={categories} activeCategory={activeCategory} onChange={setActiveCategory} />
 
-        {/* Layout: sidebar + grid */}
         <div className="menu-layout-v2">
-          {/* Sidebar */}
           <aside className="menu-sidebar-v2">
             <div className="menu-sidebar-section">
               <h3 className="menu-sidebar-title">Phân Loại Trái Cây</h3>
               <ul className="menu-sidebar-list">
-                {SIDEBAR_CATEGORIES.map((cat) => (
-                  <li key={cat} className="menu-sidebar-item">
-                    <label className="menu-sidebar-label">
-                      <input type="checkbox" defaultChecked={cat === 'Tất cả'} className="menu-sidebar-check" />
-                      {cat}
+                {FRUIT_GROUPS.map((group) => (
+                  <li key={group.id} className="menu-sidebar-item">
+                    <label className={`menu-sidebar-label ${fruitFilter === group.id ? 'is-checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        className="menu-sidebar-check"
+                        checked={fruitFilter === group.id}
+                        onChange={() => setFruitFilter(group.id)}
+                      />
+                      <span>{group.label}</span>
                     </label>
                   </li>
                 ))}
@@ -111,10 +180,35 @@ export default function MenuPage() {
             <div className="menu-sidebar-section">
               <h3 className="menu-sidebar-title">Khoảng Giá</h3>
               <div className="menu-price-range">
-                <input type="range" min="30000" max="150000" defaultValue="150000" className="menu-price-slider" />
+                <input
+                  type="range"
+                  className="menu-price-slider"
+                  min={bounds.min}
+                  max={bounds.max}
+                  step={1000}
+                  value={priceTouched ? priceRange.min : bounds.min}
+                  onChange={(event) => {
+                    setPriceTouched(true);
+                    setPriceRange((current) => ({ ...current, min: Number(event.target.value) }));
+                  }}
+                  aria-label="Giá thấp nhất"
+                />
+                <input
+                  type="range"
+                  className="menu-price-slider"
+                  min={bounds.min}
+                  max={bounds.max}
+                  step={1000}
+                  value={priceTouched ? priceRange.max : bounds.max}
+                  onChange={(event) => {
+                    setPriceTouched(true);
+                    setPriceRange((current) => ({ ...current, max: Number(event.target.value) }));
+                  }}
+                  aria-label="Giá cao nhất"
+                />
                 <div className="menu-price-labels">
-                  <span>30.000đ</span>
-                  <span>150.000đ</span>
+                  <span>{formatPrice(priceTouched ? Math.min(priceRange.min, priceRange.max) : bounds.min)}</span>
+                  <span>{formatPrice(priceTouched ? Math.max(priceRange.min, priceRange.max) : bounds.max)}</span>
                 </div>
               </div>
             </div>
@@ -122,27 +216,37 @@ export default function MenuPage() {
             <div className="menu-sidebar-section">
               <h3 className="menu-sidebar-title">Xuất Xứ</h3>
               <div className="menu-origin-pills">
-                {ORIGINS.map((o) => (
+                <button
+                  type="button"
+                  className={`menu-origin-pill ${originFilter === 'all' ? 'origin-active' : ''}`}
+                  onClick={() => setOriginFilter('all')}
+                >
+                  Tất cả
+                </button>
+                {origins.map((origin) => (
                   <button
-                    key={o}
+                    key={origin}
                     type="button"
-                    className={`menu-origin-pill ${activeOrigin === o ? 'origin-active' : ''}`}
-                    onClick={() => setActiveOrigin(o)}
+                    className={`menu-origin-pill ${originFilter === origin ? 'origin-active' : ''}`}
+                    onClick={() => setOriginFilter(originFilter === origin ? 'all' : origin)}
                   >
-                    {o}
+                    {origin}
                   </button>
                 ))}
               </div>
             </div>
+
+            <button type="button" className="menu-filter-reset" onClick={resetFilters}>Xoá tất cả bộ lọc</button>
           </aside>
 
-          {/* Product grid */}
           <div className="menu-grid-area">
             <div className="menu-grid-header">
-              <span>Tất Cả Trái Cây ({filteredProducts.length} sản phẩm)</span>
+              <span>
+                {searchQuery ? `Kết quả cho "${searchQuery}"` : 'Tất Cả Trái Cây'} ({filteredProducts.length} sản phẩm)
+              </span>
               <div className="menu-sort">
                 <span>Sắp xếp:</span>
-                <select className="menu-sort-select" defaultValue="popular">
+                <select className="menu-sort-select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
                   <option value="popular">Phổ Biến Nhất</option>
                   <option value="price-asc">Giá tăng dần</option>
                   <option value="price-desc">Giá giảm dần</option>
@@ -150,18 +254,24 @@ export default function MenuPage() {
                 </select>
               </div>
             </div>
-            <ProductGrid
-              products={filteredProducts}
-              loading={loading}
-              dataSource={dataSource}
-              onAddToCart={handleAddToCart}
-              onLoginRequired={handleLoginRequired}
-            />
+            {!loading && filteredProducts.length === 0 ? (
+              <div className="menu-empty-state">
+                <p>Không có sản phẩm nào khớp bộ lọc hiện tại.</p>
+                <button type="button" className="btn btn-ghost" onClick={resetFilters}>Xoá bộ lọc</button>
+              </div>
+            ) : (
+              <ProductGrid
+                products={filteredProducts}
+                loading={loading}
+                dataSource={dataSource}
+                onAddToCart={handleAddToCart}
+                onLoginRequired={handleLoginRequired}
+              />
+            )}
           </div>
         </div>
       </main>
 
-      {/* Floating cart button */}
       {totalQuantity > 0 && (
         <button
           className="floating-cart-btn"
@@ -183,3 +293,4 @@ export default function MenuPage() {
     </div>
   );
 }
+
