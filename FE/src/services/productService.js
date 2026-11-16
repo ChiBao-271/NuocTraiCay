@@ -472,6 +472,12 @@ export async function archiveAdminProduct(productId) {
 //  Utility
 // ──────────────────────────────────────────────────────
 // ─── Mã giảm giá (voucher) ───────────────────────────────
+export async function claimDailyCheckin() {
+  try {
+    return { data: await apiFetch('/api/users/rewards/checkin', { method: 'POST', body: JSON.stringify({}) }), error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
 export async function fetchVouchers(subtotal) {
   try {
     const query = subtotal ? `?subtotal=${Math.round(Number(subtotal))}` : '';

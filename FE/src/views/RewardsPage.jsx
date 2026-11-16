@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Header } from '../components/Header.jsx';
 import { AuthModal } from '../components/AuthModal.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { fetchProducts, fetchUserOrders, formatCurrency, getUserProfile } from '../services/productService.js';
+import { claimDailyCheckin, fetchProducts, fetchUserOrders, formatCurrency, getUserProfile } from '../services/productService.js';
 
 const COIN_TARGET = 2000;
 const LOCKED_REWARDS = [
@@ -59,6 +59,7 @@ export function RewardsPage() {
   const [filter, setFilter] = useState('all');
   const [checkedIn, setCheckedIn] = useState(false);
   const [toast, setToast] = useState('');
+  const [checkingIn, setCheckingIn] = useState(false);
   const countdown = useCountdown();
 
   useEffect(() => {
@@ -101,14 +102,28 @@ export function RewardsPage() {
     window.setTimeout(() => setToast(''), 2600);
   };
 
-  const handleCheckin = () => {
+  const handleCheckin = async () => {
     if (!user?.id) { setIsAuthOpen(true); return; }
+    if (checkingIn) return;
+    setCheckingIn(true);
+    const result = await claimDailyCheckin();
+    setCheckingIn(false);
+    if (result.error) {
+      if (result.error.code === 'ALREADY_CHECKED_IN' || String(result.error.message || '').includes('đã điểm danh')) {
+        setCheckedIn(true);
+        showToast('Hôm nay bạn đã điểm danh rồi.');
+        return;
+      }
+      showToast(result.error.message || 'Không điểm danh được lúc này.');
+      return;
+    }
     const today = new Date().toISOString().slice(0, 10);
     try {
       window.localStorage.setItem('checkin_' + user.id + '_' + today, '1');
     } catch { /* trình duyệt chặn lưu trữ */ }
     setCheckedIn(true);
-    showToast('Điểm danh thành công! Hẹn gặp bạn ngày mai.');
+    if (Number.isFinite(Number(result.data?.coins))) setCoins(Number(result.data.coins));
+    showToast('Điểm danh thành công! Bạn vừa nhận +5 xu.');
   };
 
   const handleCopyReferral = async () => {
@@ -160,7 +175,7 @@ export function RewardsPage() {
                   <div><strong>Điểm danh hàng ngày</strong><small>+5 Xu</small></div>
                   {checkedIn
                     ? <span className="rewards-done">✓ Đã điểm danh</span>
-                    : <button type="button" className="rewards-mini-btn" onClick={handleCheckin}>Điểm danh</button>}
+                    : <button type="button" className="rewards-mini-btn" onClick={handleCheckin} disabled={checkingIn}>{checkingIn ? 'Đang cộng xu…' : 'Điểm danh'}</button>}
                 </li>
                 <li>
                   <span className="rewards-mission-icon">⭐</span>

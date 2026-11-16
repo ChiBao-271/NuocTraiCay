@@ -7413,3 +7413,6 @@ textarea:focus {
 .admin-icon-btn:hover { background: #f1f8ea; }
 
 .admin-orders-table select { border-radius: 10px; padding: .35rem .5rem; font-size: .78rem; }
+
+/* Trái cây tươi / combo: không hiển thị tuỳ chọn độ ngọt của nước ép */
+.pd-hide { display: none !important; }

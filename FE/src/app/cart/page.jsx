@@ -26,6 +26,10 @@ export default function CartPage() {
       : appliedVoucher?.type === 'fixed' ? Math.min(cartTotal, appliedVoucher.value) : 0;
   const voucherShippingDiscount = baseShipping - SHIPPING_FEE;
   const finalTotal = cartTotal + SHIPPING_FEE - discount;
+  // Trái cây tươi / combo không có dung tích như nước ép.
+  const unitLabel = (item) => (item.category === 'juice' || item.category === 'smoothie')
+    ? 'Dung tích'
+    : item.category === 'combo' ? 'Quy cách' : 'Khối lượng';
 
   const handleApplyVoucher = async () => {
     const code = voucher.trim().toUpperCase();
@@ -95,7 +99,7 @@ export default function CartPage() {
                   <div className="cart-v2-info">
                     <strong className="cart-v2-name">{item.name}</strong>
                     <small className="cart-v2-desc">{item.description}</small>
-                    <small className="cart-v2-unit">Dung tích: {item.unit}</small>
+                    <small className="cart-v2-unit">{unitLabel(item)}: {item.unit}</small>
                   </div>
                   <div className="cart-v2-qty-block">
                     <button
@@ -114,7 +118,7 @@ export default function CartPage() {
                   </div>
                   <div className="cart-v2-price-block">
                     <strong className="cart-v2-price">{formatCurrency(item.price * item.quantity)}</strong>
-                    <small className="cart-v2-unit-price">{formatCurrency(item.price)} / ly</small>
+                    <small className="cart-v2-unit-price">{formatCurrency(item.price)} / {item.unit}</small>
                   </div>
                   <button
                     className="cart-v2-remove"

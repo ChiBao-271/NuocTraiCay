@@ -265,7 +265,7 @@ export default function CheckoutPage() {
                   name="note"
                   value={formData.note}
                   onChange={handleChange}
-                  placeholder="Ví dụ: giao sau 17h, ít đá..."
+                  placeholder="Ví dụ: giao sau 17h, gọi trước khi giao..."
                   disabled={submitting}
                 />
               </label>

@@ -75,7 +75,10 @@ export default function ProductDetailPage() {
     );
   }
 
-  const WEIGHT_OPTIONS = ['100ml', '250ml', '350ml', '500ml'];
+  const isDrink = product.category === 'juice' || product.category === 'smoothie';
+  const WEIGHT_OPTIONS = isDrink ? ['250ml', '350ml', '500ml'] : [product.unit || 'kg'];
+  const weightLabel = isDrink ? 'Dung tích' : (product.category === 'combo' ? 'Quy cách' : 'Khối lượng');
+  const currentWeight = isDrink ? activeWeight : (product.unit || 'kg');
 
   const REVIEWS = [
     { name: 'Nguyễn Minh Anh', stars: 5, date: '05/11/2026', text: 'Nước ép rất ngon, tươi mát và nguyên chất. Giao hàng nhanh, đóng gói cẩn thận. Sẽ ủng hộ tiếp!' },
@@ -109,7 +112,7 @@ export default function ProductDetailPage() {
 
             <div className="product-benefits">
               <div className="benefit-card"><span>🌿</span><small>100% Tự nhiên</small></div>
-              <div className="benefit-card"><span>🧊</span><small>Ép lạnh</small></div>
+              <div className="benefit-card"><span>{isDrink ? '🧊' : '🌤️'}</span><small>{isDrink ? 'Ép lạnh' : 'Thu hoạch mới'}</small></div>
               <div className="benefit-card"><span>🛡️</span><small>Không bảo quản</small></div>
             </div>
           </section>
@@ -133,13 +136,13 @@ export default function ProductDetailPage() {
 
             {/* Weight options */}
             <div className="pd-weight-section">
-              <label className="pd-option-label">Dung tích</label>
+              <label className="pd-option-label">{weightLabel}</label>
               <div className="pd-weight-pills">
                 {WEIGHT_OPTIONS.map((w) => (
                   <button
                     key={w}
                     type="button"
-                    className={`pd-weight-pill ${activeWeight === w ? 'pd-weight-pill--active' : ''}`}
+                    className={`pd-weight-pill ${currentWeight === w ? 'pd-weight-pill--active' : ''}`}
                     onClick={() => setActiveWeight(w)}
                   >{w}</button>
                 ))}
@@ -147,7 +150,7 @@ export default function ProductDetailPage() {
             </div>
 
             {/* Sweetness */}
-            <div className="product-detail-options">
+            <div className={'product-detail-options' + (isDrink ? '' : ' pd-hide')}>
               <div className="option-group">
                 <label>Độ ngọt</label>
                 <div className="radio-group">
@@ -160,7 +163,7 @@ export default function ProductDetailPage() {
 
             {/* Nutrition bar */}
             <div className="pd-nutrition">
-              <div className="pd-nutrition-title">Thông tin dinh dưỡng <small>(per 350ml)</small></div>
+              <div className="pd-nutrition-title">Thông tin dinh dưỡng <small>(mỗi {product.unit})</small></div>
               <div className="pd-nutrition-bars">
                 <div className="pd-nutr-item">
                   <span>Calories</span>
@@ -203,7 +206,7 @@ export default function ProductDetailPage() {
                 <span>🚚</span>
                 <div>
                   <strong>Giao hàng Hỏa tốc 2h</strong>
-                  <small>Đảm bảo giữ lạnh tới tay bạn</small>
+                  <small>{isDrink ? 'Đảm bảo giữ lạnh tới tay bạn' : 'Đóng gói cẩn thận, giao trong ngày'}</small>
                 </div>
               </div>
             </div>
