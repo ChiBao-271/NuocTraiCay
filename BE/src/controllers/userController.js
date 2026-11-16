@@ -39,3 +39,24 @@ export async function getUserProfile(req, res) {
     res.status(500).json({ success: false, error: err.message });
   }
 }
+
+export async function updateUserProfile(req, res) {
+  try {
+    const { userId } = req.params;
+    if (userId !== req.user.id) return res.status(403).json({ success: false, error: 'Bạn không có quyền sửa hồ sơ này.' });
+    const { full_name, phone } = req.body || {};
+    if (full_name !== undefined && (typeof full_name !== 'string' || full_name.trim().length < 2 || full_name.trim().length > 120)) return res.status(400).json({ success: false, error: 'Họ tên cần từ 2–120 ký tự.' });
+    if (phone !== undefined && (typeof phone !== 'string' || phone.trim().length > 30)) return res.status(400).json({ success: false, error: 'Số điện thoại không hợp lệ.' });
+    const profileDb = getProfileAdminDb();
+    if (!profileDb) return res.status(503).json({ success: false, error: 'Backend chưa cấu hình SUPABASE_SERVICE_ROLE_KEY.' });
+    const updates = {};
+    if (full_name !== undefined) updates.full_name = full_name.trim();
+    if (phone !== undefined) updates.phone = phone.trim() || null;
+    const { data, error } = await profileDb.from('profiles').update(updates).eq('id', userId).select('id,full_name,phone,avatar_url,role,created_at').single();
+    if (error) throw error;
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[BE] updateUserProfile error:', err.message);
+    return res.status(500).json({ success: false, error: 'Không thể cập nhật hồ sơ.' });
+  }
+}

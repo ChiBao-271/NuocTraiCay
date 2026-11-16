@@ -1,12 +1,13 @@
 import { Router, raw } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { getDashboard, getAllOrders, getAdminOrderDetails, updateOrderStatus, getAdminProducts, getAdminCategories, saveAdminCategory, getAdminUsers, updateAdminUserRole, createAdminProduct, updateAdminProduct, archiveAdminProduct, uploadProductImage } from '../controllers/adminController.js';
+import { getDashboard, getAllOrders, getAdminOrderDetails, updateOrderStatus, getAdminProducts, getAdminCategories, getAdminCatalogHealth, saveAdminCategory, getAdminUsers, updateAdminUserRole, createAdminProduct, updateAdminProduct, archiveAdminProduct, uploadProductImage } from '../controllers/adminController.js';
 
 const router = Router();
 router.use(requireAuth, requireAdmin);
 router.post('/uploads/product-image', raw({ type: 'image/*', limit: '5mb' }), uploadProductImage);
 
 router.get('/dashboard', getDashboard);
+router.get('/catalog-health', getAdminCatalogHealth);
 router.get('/orders', getAllOrders);
 router.get('/orders/:id', getAdminOrderDetails);
 router.patch('/orders/:id', updateOrderStatus);

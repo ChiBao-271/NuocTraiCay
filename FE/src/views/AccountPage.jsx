@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { AuthModal } from '../components/AuthModal.jsx';
 import { Header } from '../components/Header.jsx';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { cancelUserOrder, fetchOrderDetails, fetchUserOrders, formatCurrency } from '../services/productService.js';
+import { cancelUserOrder, fetchOrderDetails, fetchUserOrders, fetchUserOrderSummary, formatCurrency, getUserProfile, updateUserProfile } from '../services/productService.js';
 
 const STATUS = {
   pending: ['Chờ xác nhận', 'status-pending'],
@@ -20,8 +20,13 @@ const FILTERS = [
 ];
 
 export function AccountPage() {
-  const { user, signOut, loading } = useAuth();
+  const { user, userRole, signOut, loading } = useAuth();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [profile, setProfile] = useState({ full_name: '', phone: '', avatar_url: '', created_at: '' });
+  const [profileDraft, setProfileDraft] = useState({ full_name: '', phone: '' });
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
   const [orders, setOrders] = useState([]);
@@ -32,6 +37,31 @@ export function AccountPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionError, setActionError] = useState('');
   const [cancellingId, setCancellingId] = useState(null);
+  const [orderStats, setOrderStats] = useState({ total: 0, completed: 0, spent: 0 });
+  const [defaultAddress, setDefaultAddress] = useState('');
+  const [recentSearches, setRecentSearches] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) { setProfile({ full_name: '', phone: '', avatar_url: '', created_at: '' }); return undefined; }
+    setProfileMessage('');
+    setProfileLoading(true);
+    getUserProfile(user.id).then(({ data, error }) => {
+      if (!active) return;
+      if (data) {
+        const next = { ...data, full_name: data.full_name || user.user_metadata?.full_name || '', phone: data.phone || '' };
+        setProfile(next); setProfileDraft({ full_name: next.full_name, phone: next.phone });
+        try {
+          const saved = JSON.parse(localStorage.getItem(`shipping_info_${user.id}`) || '{}');
+          setDefaultAddress(saved.address || '');
+          const searches = JSON.parse(localStorage.getItem(`recent_searches_${user.id}`) || '[]');
+          setRecentSearches(Array.isArray(searches) ? searches.slice(0, 6) : []);
+        } catch { setDefaultAddress(''); setRecentSearches([]); }
+      } else setProfileMessage(error?.message || 'Không tải được hồ sơ.');
+      setProfileLoading(false);
+    });
+    return () => { active = false; };
+  }, [user]);
 
   const loadOrders = useCallback(async () => {
     if (!user?.id) { setOrders([]); setTotalPages(0); return; }
@@ -41,6 +71,10 @@ export function AccountPage() {
     setOrders(result.data);
     setTotalPages(result.totalPages);
     setOrderError(result.error ? 'Không tải được lịch sử đơn hàng. Vui lòng thử lại.' : '');
+    if (!result.error && page === 1 && status === 'all') {
+      const summary = await fetchUserOrderSummary(user.id);
+      if (summary.data) setOrderStats(summary.data);
+    }
     setOrdersLoading(false);
   }, [user?.id, page, status]);
 
@@ -64,7 +98,20 @@ export function AccountPage() {
     await loadOrders();
     if (selectedOrder?.id === orderId) setSelectedOrder((current) => ({ ...current, order_status: 'cancelled' }));
   };
-  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Khách hàng FreshFruit';
+  const saveProfile = async (event) => {
+    event.preventDefault(); if (!user?.id) return; setProfileSaving(true); setProfileMessage('');
+    const result = await updateUserProfile(user.id, profileDraft); setProfileSaving(false);
+    if (result.error) { setProfileMessage(result.error.message || 'Không thể lưu hồ sơ.'); return; }
+    setProfile({ ...profile, ...result.data }); setProfileDraft({ full_name: result.data.full_name || '', phone: result.data.phone || '' });
+    setProfileMessage('Đã lưu thông tin cá nhân.');
+  };
+  const clearRecentSearches = () => {
+    if (!user?.id) return;
+    try { localStorage.removeItem(`recent_searches_${user.id}`); } catch { /* browser storage unavailable */ }
+    setRecentSearches([]);
+  };
+  const displayName = profile.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Khách hàng FreshFruit';
+  const isAdmin = userRole === 'admin';
 
   return (
     <div className="site-shell page-shell">
@@ -73,20 +120,33 @@ export function AccountPage() {
       <Header />
       <main className="page-main account-layout">
         <section className="panel account-profile-panel">
-          <span className="eyebrow">Tài khoản khách hàng</span>
-          <div className="account-avatar">👩🏻</div>
+          <span className="eyebrow">{isAdmin ? 'Hồ sơ quản trị viên' : 'Hồ sơ khách hàng'}</span>
+          <div className="account-avatar">{isAdmin ? '🛡️' : '👤'}</div>
           <h1>{displayName}</h1>
-          <p>{user ? user.email : 'Đăng nhập để đồng bộ hồ sơ, đơn hàng và điểm thưởng.'}</p>
+          <p>{user ? user.email : 'Đăng nhập để xem hồ sơ, đơn hàng và hoạt động tài khoản.'}</p>
+          {user && <span className={`account-role-badge ${isAdmin ? 'is-admin' : ''}`}>{isAdmin ? 'Quản trị viên' : 'Khách hàng'}</span>}
           {!loading && (user
             ? <button className="btn btn-ghost full-width" type="button" onClick={signOut}>Đăng xuất</button>
             : <button className="btn btn-primary full-width" type="button" onClick={() => setIsAuthOpen(true)}>Đăng nhập / Đăng ký</button>)}
         </section>
 
+        <div className="account-personal-content">
+        {user && <section className="panel account-personal-panel">
+          <div className="section-heading"><span className="eyebrow">Thông tin cá nhân</span><h2>Hồ sơ của tôi</h2><p>Chỉ bạn mới xem và cập nhật được thông tin này.</p></div>
+          {profileLoading ? <p role="status">Đang tải hồ sơ…</p> : <form className="account-profile-form" onSubmit={saveProfile}><label>Họ và tên<input required minLength={2} maxLength={120} value={profileDraft.full_name} onChange={(event) => setProfileDraft((draft) => ({ ...draft, full_name: event.target.value }))} /></label><label>Email<input value={user.email || ''} readOnly disabled /></label><label>Số điện thoại<input type="tel" maxLength={30} value={profileDraft.phone} onChange={(event) => setProfileDraft((draft) => ({ ...draft, phone: event.target.value }))} placeholder="Chưa cập nhật" /></label><label>Vai trò<input value={isAdmin ? 'Quản trị viên' : 'Khách hàng'} readOnly disabled /></label><div className="account-profile-form-footer"><small>Tham gia: {profile.created_at ? new Date(profile.created_at).toLocaleDateString('vi-VN') : '—'}</small><button className="btn btn-primary" type="submit" disabled={profileSaving || !profileDraft.full_name.trim()}>{profileSaving ? 'Đang lưu…' : 'Lưu hồ sơ'}</button></div>{profileMessage && <p role="status">{profileMessage}</p>}</form>}
+        </section>}
+
+        {user && <section className="account-personal-stats" aria-label="Tổng quan hoạt động"><article><span>🧾</span><small>Tổng đơn</small><strong>{orderStats.total}</strong></article><article><span>✅</span><small>Đã hoàn tất</small><strong>{orderStats.completed}</strong></article><article><span>🛍️</span><small>Chi tiêu đơn không hủy · trang đầu</small><strong>{formatCurrency(orderStats.spent)}</strong></article><article><span>{isAdmin ? '🛡️' : '🌱'}</span><small>Loại tài khoản</small><strong>{isAdmin ? 'Admin' : 'Khách hàng'}</strong></article></section>}
+
+        {isAdmin && <section className="panel account-personal-panel"><div className="section-heading"><span className="eyebrow">Không gian quản trị</span><h2>Thao tác admin</h2><p>Truy cập nhanh các khu vực quản trị.</p></div><div className="account-admin-shortcuts"><Link href="/admin">📊 Dashboard</Link><Link href="/admin/orders">📦 Quản lý đơn</Link><Link href="/admin/products">🍊 Sản phẩm</Link><Link href="/admin/users">👥 Tài khoản</Link></div></section>}
+
+        {user && <section className="panel account-personal-panel account-personal-activity"><div className="section-heading"><span className="eyebrow">Hoạt động cá nhân</span><h2>Thông tin sử dụng</h2><p>Một số thông tin được lưu trên thiết bị này; chúng không phải log kiểm toán phía server.</p></div><div className="account-activity-list"><div><span>📍</span><span><small>Địa chỉ giao hàng gần nhất</small><strong>{defaultAddress || 'Chưa lưu địa chỉ giao hàng'}</strong></span></div><div><span>🔎</span><span><small>Tìm kiếm gần đây</small>{recentSearches.length ? <div className="account-search-history">{recentSearches.map((term, index) => <Link key={`${term}-${index}`} href={`/menu?search=${encodeURIComponent(term)}`}>{term}</Link>)}</div> : <strong>Chưa có lịch sử tìm kiếm</strong>}</span></div></div>{recentSearches.length > 0 && <button className="btn btn-ghost" type="button" onClick={clearRecentSearches}>Xóa tìm kiếm gần đây</button>}</section>}
+
         <section className="panel account-menu-panel">
           <div className="section-heading">
-            <span className="eyebrow">Trung tâm khách hàng</span>
-            <h2>Đơn hàng của tôi</h2>
-            <p>Theo dõi trạng thái các đơn hàng bạn đã đặt.</p>
+            <span className="eyebrow">{isAdmin ? 'Lịch sử hoạt động mua' : 'Trung tâm khách hàng'}</span>
+            <h2>Lịch sử mua hàng</h2>
+            <p>Các đơn hàng gắn với tài khoản này; dữ liệu chỉ được tải sau khi đăng nhập.</p>
           </div>
 
           {!user && !loading ? (
@@ -112,6 +172,7 @@ export function AccountPage() {
             </>
           )}
         </section>
+        </div>
       </main>
       {(detailLoading || selectedOrder) && <div className="account-order-modal-backdrop" role="presentation" onClick={() => !detailLoading && setSelectedOrder(null)}><section className="account-order-modal panel" role="dialog" aria-modal="true" aria-label="Chi tiết đơn hàng" onClick={(event) => event.stopPropagation()}><button className="account-order-modal-close" type="button" aria-label="Đóng" onClick={() => { setSelectedOrder(null); setActionError(''); }}>×</button>{detailLoading ? <div className="account-orders-empty">Đang tải chi tiết đơn…</div> : selectedOrder && <><span className="eyebrow">Chi tiết đơn hàng</span><h2>#{selectedOrder.order_code}</h2><p>{selectedOrder.recipient_name} · {selectedOrder.recipient_phone}</p><p>{selectedOrder.shipping_address}</p><div className="account-order-items">{(selectedOrder.items || []).map((item) => <div className="account-order-item" key={item.id}><span>{item.product_name} × {item.quantity}</span><strong>{formatCurrency(item.item_subtotal)}</strong></div>)}</div><div className="account-order-item account-order-grand-total"><span>Tổng cộng</span><strong>{formatCurrency(selectedOrder.total_amount)}</strong></div>{actionError && <p className="account-orders-error" role="alert">{actionError}</p>}{selectedOrder.order_status === 'pending' && <button className="btn btn-ghost" type="button" disabled={cancellingId === selectedOrder.id} onClick={() => cancelOrder(selectedOrder.id)}>{cancellingId === selectedOrder.id ? 'Đang hủy…' : 'Hủy đơn hàng'}</button>}</>}</section></div>}
       {isAuthOpen && <AuthModal onClose={() => setIsAuthOpen(false)} />}

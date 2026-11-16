@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { config } from '../config/env.js';
 
 // ──────────────────────────────────────────────────────
 //  GET /api/admin/dashboard  — thống kê tổng quan
@@ -34,36 +35,58 @@ export async function getDashboard(req, res) {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const db = req.adminDb;
 
-    const [ordersRes, monthRes, customersRes, productsRes] = await Promise.all([
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const [ordersRes, monthOrdersRes, customersRes, productsRes, ordersCountRes, pendingRes] = await Promise.all([
       db
         .from('orders')
         .select('id, order_code, recipient_name, total_amount, order_status, created_at', { count: 'exact' })
         .order('created_at', { ascending: false })
         .limit(10),
-      db
-        .from('orders')
-        .select('id, total_amount, order_status', { count: 'exact' })
-        .gte('created_at', startOfMonth),
-      db.from('profiles').select('id', { count: 'exact', head: true }),
+      db.from('orders').select('id,total_amount,order_status,payment_method,payment_status,created_at', { count: 'exact' }).gte('created_at', startOfMonth).lt('created_at', monthEnd).order('created_at', { ascending: true }).range(0, 999),
+      db.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'customer'),
       db.from('products').select('id', { count: 'exact', head: true }).eq('is_available', true),
+      db.from('orders').select('id', { count: 'exact', head: true }),
+      db.from('orders').select('id', { count: 'exact', head: true }).eq('order_status', 'pending'),
     ]);
 
-    const monthOrders = monthRes.data ?? [];
+    const monthOrders = [...(monthOrdersRes.data ?? [])];
+    // Supabase REST returns at most its configured row cap per request. Page
+    // through the month so revenue and order count are not silently truncated.
+    while (monthOrdersRes.count !== null && monthOrders.length < monthOrdersRes.count) {
+      const offset = monthOrders.length;
+      const { data: nextPage, error: pageError } = await db
+        .from('orders')
+        .select('id,total_amount,order_status,payment_method,payment_status,created_at')
+        .gte('created_at', startOfMonth)
+        .lt('created_at', monthEnd)
+        .order('created_at', { ascending: true })
+        .range(offset, offset + 999);
+      if (pageError) throw pageError;
+      if (!nextPage?.length) break;
+      monthOrders.push(...nextPage);
+    }
     const monthRevenue = monthOrders
-      .filter((o) => o.order_status !== 'cancelled')
+      .filter((order) => {
+        if (order.order_status === 'cancelled') return false;
+        const method = String(order.payment_method || '').trim().toLowerCase();
+        const paymentStatus = String(order.payment_status || '').trim().toLowerCase();
+        // COD revenue is realized on delivery; online transfers count only
+        // after the provider confirms payment.
+        return method === 'cod' ? order.order_status === 'completed' : paymentStatus === 'paid';
+      })
       .reduce((acc, o) => acc + Number(o.total_amount ?? 0), 0);
 
     const allOrders = ordersRes.data ?? [];
-    const { count: pendingOrders, error: pendingError } = await db.from('orders').select('id', { count: 'exact', head: true }).eq('order_status', 'pending');
-    if (ordersRes.error || monthRes.error || customersRes.error || productsRes.error || pendingError) throw ordersRes.error || monthRes.error || customersRes.error || productsRes.error || pendingError;
+    const failedQuery = [ordersRes, monthOrdersRes, customersRes, productsRes, ordersCountRes, pendingRes].find((result) => result.error);
+    if (failedQuery) throw failedQuery.error;
 
     res.json({
       success: true,
       data: {
         stats: {
-          totalOrders: ordersRes.count ?? 0,
-          pendingOrders: pendingOrders ?? 0,
-          monthOrders: monthRes.count ?? monthOrders.length,
+          totalOrders: ordersCountRes.count ?? 0,
+          pendingOrders: pendingRes.count ?? 0,
+          monthOrders: monthOrdersRes.count ?? monthOrders.length,
           monthRevenue,
           totalCustomers: customersRes.count ?? 0,
           totalProducts: productsRes.count ?? 0,
@@ -74,6 +97,44 @@ export async function getDashboard(req, res) {
   } catch (err) {
     console.error('[BE] getDashboard error:', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// Return the live catalog/profile counts and schema columns from the same
+// Supabase project used by Render, so an empty admin screen is diagnosable.
+export async function getAdminCatalogHealth(req, res) {
+  try {
+    // Run read-only requests against the same tables the admin pages use.
+    // This avoids requiring a diagnostic SQL function/migration just to render
+    // the dashboard, and surfaces real counts from the live project.
+    const [products, categories, profiles, orders] = await Promise.all([
+      req.adminDb.from('products').select('id,category_id,is_available', { count: 'exact' }),
+      req.adminDb.from('categories').select('id,is_active', { count: 'exact' }),
+      req.adminDb.from('profiles').select('id,role', { count: 'exact' }),
+      req.adminDb.from('orders').select('id', { count: 'exact', head: true }),
+    ]);
+    const failed = [products, categories, profiles, orders].find((result) => result.error);
+    if (failed) throw failed.error;
+    let projectHost = null;
+    try { projectHost = new URL(config.supabaseUrl).host; } catch { /* config error is reported by the RPC */ }
+    return res.json({ success: true, data: {
+      backendSupabaseHost: projectHost,
+      counts: {
+        products: products.count ?? products.data?.length ?? 0,
+        availableProducts: (products.data || []).filter((row) => row.is_available === true).length,
+        uncategorizedProducts: (products.data || []).filter((row) => row.category_id === null).length,
+        categories: categories.count ?? categories.data?.length ?? 0,
+        activeCategories: (categories.data || []).filter((row) => row.is_active === true).length,
+        profiles: profiles.count ?? profiles.data?.length ?? 0,
+        customers: (profiles.data || []).filter((row) => row.role === 'customer').length,
+        admins: (profiles.data || []).filter((row) => row.role === 'admin').length,
+        suppliers: (profiles.data || []).filter((row) => row.role === 'supplier').length,
+        orders: orders.count ?? 0,
+      },
+    } });
+  } catch (err) {
+    console.error('[BE] getAdminCatalogHealth error:', err.code, err.message);
+    return res.status(500).json({ success: false, code: err.code || 'ADMIN_CATALOG_HEALTH_FAILED', error: `Không đọc được tình trạng database: ${err.message || 'unknown error'}` });
   }
 }
 
@@ -106,7 +167,10 @@ export async function getAllOrders(req, res) {
     }
 
     const { data, error, count } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error('[BE] getAllOrders DB error:', error.code, error.message);
+      return res.status(500).json({ success: false, code: error.code || 'ADMIN_ORDERS_LOAD_FAILED', error: `Supabase orders query failed (${error.code || 'unknown'}): ${error.message || 'unknown'}` });
+    }
 
     res.json({ success: true, data: data || [], total: count ?? 0, page: pageNumber, limit: pageSize, totalPages: Math.ceil((count ?? 0) / pageSize) });
   } catch (err) {
@@ -120,12 +184,12 @@ export async function getAdminOrderDetails(req, res) {
     const { data: order, error } = await req.adminDb.from('orders').select('*').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!order) return res.status(404).json({ success: false, error: 'Không tìm thấy đơn hàng.' });
-    const { data: items, error: itemsError } = await req.adminDb.from('order_items').select('id,product_id,product_name,unit_price,quantity,item_subtotal').eq('order_id', req.params.id).order('id');
+    const { data: items, error: itemsError } = await req.adminDb.from('order_items').select('*').eq('order_id', req.params.id).order('id');
     if (itemsError) throw itemsError;
     return res.json({ success: true, data: { ...order, items: items || [] } });
   } catch (err) {
     console.error('[BE] getAdminOrderDetails error:', err.message);
-    return res.status(500).json({ success: false, error: 'Không thể tải chi tiết đơn hàng.' });
+    return res.status(500).json({ success: false, code: err.code || 'ADMIN_ORDER_DETAILS_FAILED', error: `Order detail query failed (${err.code || 'unknown'}): ${err.message || 'unknown'}` });
   }
 }
 
@@ -188,28 +252,41 @@ export async function getAdminProducts(req, res) {
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
     const from = (page - 1) * limit;
-    let query = req.adminDb.from('products').select('id,name,slug,category_id,price,description,image_url,stock_quantity,origin,farming_standard,rating_avg,is_available,is_bestseller,created_at,updated_at', { count: 'exact' }).order('created_at', { ascending: false }).range(from, from + limit - 1);
+    // `updated_at` is not part of the deployed products schema on every
+    // project version. Selecting a missing column makes PostgREST reject the
+    // entire list, so only request fields guaranteed by schema.sql.
+    let query = req.adminDb.from('products').select('id,name,slug,category_id,price,unit,description,image_url,stock_quantity,origin,farming_standard,rating_avg,rating_count,is_available,is_bestseller,created_at', { count: 'exact' }).order('created_at', { ascending: false }).range(from, from + limit - 1);
     if (req.query.status === 'active') query = query.eq('is_available', true);
     if (req.query.status === 'inactive') query = query.eq('is_available', false);
     if (req.query.category && req.query.category !== 'all') query = query.eq('category_id', req.query.category);
     if (typeof req.query.search === 'string' && req.query.search.trim()) query = query.ilike('name', `%${req.query.search.trim().replace(/[,%()]/g, '')}%`);
     const { data, error, count } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error('[BE] getAdminProducts DB error:', error.code, error.message);
+      return res.status(500).json({ success: false, code: error.code || 'ADMIN_PRODUCTS_LOAD_FAILED', error: `Products query failed (${error.code || 'unknown'}): ${error.message || 'unknown'}` });
+    }
     res.json({ success: true, data: data || [], total: count ?? 0, page, limit, totalPages: Math.ceil((count ?? 0) / limit) });
   } catch (err) {
     console.error('[BE] getAdminProducts error:', err.message);
-    res.status(500).json({ success: false, error: 'Không thể tải danh sách sản phẩm.' });
+    res.status(500).json({
+      success: false,
+      code: err.code || 'ADMIN_PRODUCTS_LOAD_FAILED',
+      error: `Không thể tải danh sách sản phẩm từ Supabase${err.code ? ` (${err.code})` : ''}: ${err.message || 'unknown error'}`,
+    });
   }
 }
 
 export async function getAdminCategories(req, res) {
   try {
     const { data, error } = await req.adminDb.from('categories').select('id,name,slug,icon,is_active,display_order').order('display_order', { ascending: true }).order('name', { ascending: true });
-    if (error) throw error;
+    if (error) {
+      console.error('[BE] getAdminCategories DB error:', error.code, error.message);
+      return res.status(500).json({ success: false, code: error.code || 'ADMIN_CATEGORIES_LOAD_FAILED', error: `Không thể tải danh mục từ Supabase${error.code ? ` (${error.code})` : ''}: ${error.message || 'unknown error'}` });
+    }
     res.json({ success: true, data: data || [] });
   } catch (err) {
     console.error('[BE] getAdminCategories error:', err.message);
-    res.status(500).json({ success: false, error: 'Không thể tải danh mục sản phẩm.' });
+    res.status(500).json({ success: false, code: err.code || 'ADMIN_CATEGORIES_LOAD_FAILED', error: `Không thể tải danh mục từ Supabase${err.code ? ` (${err.code})` : ''}: ${err.message || 'unknown error'}` });
   }
 }
 
@@ -227,8 +304,9 @@ export async function saveAdminCategory(req, res) {
     if (!data) return res.status(404).json({ success: false, error: 'Không tìm thấy danh mục.' });
     return res.json({ success: true, data });
   }
-  const categoryId = normalizedSlug;
-  const { data, error } = await req.adminDb.from('categories').insert({ id: categoryId, ...payload }).select('id,name,slug,icon,is_active,display_order').single();
+  // The production schema uses UUID category ids with a database default.
+  // Never use the human slug as `id` (that fails against uuid schemas).
+  const { data, error } = await req.adminDb.from('categories').insert(payload).select('id,name,slug,icon,is_active,display_order').single();
   if (error) return res.status(error.code === '23505' ? 409 : 500).json({ success: false, error: error.code === '23505' ? 'Danh mục hoặc slug đã tồn tại.' : 'Không thể tạo danh mục.' });
   return res.status(201).json({ success: true, data });
 }
@@ -237,38 +315,48 @@ export async function getAdminUsers(req, res) {
   try {
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
     const perPage = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
-    const { data, error } = await req.adminDb.auth.admin.listUsers({ page, perPage });
+    // The Auth Admin list endpoint returns a DB error on the configured live
+    // project. The live profiles table already has email/role/name and is the
+    // source of truth used by the app to authorize admins, so list that table.
+    const from = (page - 1) * perPage;
+    const roleFilter = typeof req.query.role === 'string' ? req.query.role : '';
+    if (roleFilter && !['admin', 'customer', 'supplier'].includes(roleFilter)) return res.status(400).json({ success: false, error: 'Vai trò cần lọc không hợp lệ.' });
+    let profileQuery = req.adminDb.from('profiles')
+      .select('id,email,full_name,phone,role,coins,created_at', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, from + perPage - 1);
+    if (roleFilter) profileQuery = profileQuery.eq('role', roleFilter);
+    const { data, error, count } = await profileQuery;
     if (error) throw error;
-    const pageUsers = data.users || [];
-    const { data: profiles, error: profileError } = pageUsers.length
-      ? await req.adminDb.from('profiles').select('id,role').in('id', pageUsers.map((user) => user.id))
-      : { data: [], error: null };
-    if (profileError) throw profileError;
-    const roleById = new Map((profiles || []).map((profile) => [profile.id, profile.role]));
-    const users = pageUsers.map((user) => ({ id: user.id, email: user.email, full_name: user.user_metadata?.full_name || null, created_at: user.created_at, last_sign_in_at: user.last_sign_in_at, role: roleById.get(user.id) || 'customer', banned_until: user.banned_until || null }));
-    res.json({ success: true, data: users, total: data.total || users.length, page, limit: perPage });
+    const users = (data || []).map((profile) => ({
+      ...profile,
+      last_sign_in_at: null,
+      banned_until: null,
+    }));
+    const total = count ?? users.length;
+    res.json({ success: true, data: users, total, page, limit: perPage, totalPages: Math.ceil(total / perPage), hasNextPage: page * perPage < total });
   } catch (err) {
     console.error('[BE] getAdminUsers error:', err.message);
-    res.status(500).json({ success: false, error: 'Không thể tải tài khoản. Kiểm tra quyền service role.' });
+    res.status(500).json({ success: false, code: err.code || 'ADMIN_USERS_LOAD_FAILED', error: `Không thể tải tài khoản từ Supabase Auth/profiles${err.code ? ` (${err.code})` : ''}: ${err.message || 'unknown error'}` });
   }
 }
 
 export async function updateAdminUserRole(req, res) {
   const { role } = req.body || {};
-  if (!['admin', 'customer'].includes(role)) return res.status(400).json({ success: false, error: 'Vai trò không hợp lệ.' });
+  if (!['admin', 'customer', 'supplier'].includes(role)) return res.status(400).json({ success: false, error: 'Vai trò không hợp lệ.' });
   if (req.params.id === req.user.id && role !== 'admin') return res.status(400).json({ success: false, error: 'Không thể tự hạ quyền admin của chính mình.' });
   try {
     const { count: adminCount, error: countError } = await req.adminDb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin');
     if (countError) throw countError;
     const { data: targetProfile, error: targetProfileError } = await req.adminDb.from('profiles').select('role').eq('id', req.params.id).maybeSingle();
     if (targetProfileError) throw targetProfileError;
+    if (role !== 'admin' && targetProfile?.role === 'admin' && (adminCount || 0) <= 1) return res.status(409).json({ success: false, error: 'Không thể hạ quyền admin cuối cùng.' });
     if (!targetProfile) return res.status(404).json({ success: false, error: 'Không tìm thấy hồ sơ tài khoản.' });
-    if (role !== 'admin' && targetProfile.role === 'admin' && (adminCount || 0) <= 1) return res.status(409).json({ success: false, error: 'Không thể hạ quyền admin cuối cùng.' });
-    const { data: target, error: targetError } = await req.adminDb.auth.admin.getUserById(req.params.id);
-    if (targetError || !target?.user) return res.status(404).json({ success: false, error: 'Không tìm thấy tài khoản.' });
+    const { data: targetWithEmail, error: emailError } = await req.adminDb.from('profiles').select('id,email,role').eq('id', req.params.id).maybeSingle();
+    if (emailError) throw emailError;
     const { error: profileError } = await req.adminDb.from('profiles').update({ role }).eq('id', req.params.id);
     if (profileError) throw profileError;
-    res.json({ success: true, data: { id: req.params.id, email: target.user.email, role } });
+    res.json({ success: true, data: { id: req.params.id, email: targetWithEmail?.email || null, role } });
   } catch (err) {
     console.error('[BE] updateAdminUserRole error:', err.message);
     res.status(500).json({ success: false, error: 'Không thể cập nhật quyền tài khoản.' });
@@ -286,7 +374,7 @@ export async function createAdminProduct(req, res) {
     const payload = {
       id: req.body.id?.trim() || randomUUID(), name: req.body.name.trim(), category_id: category.id,
       price: Number(req.body.price), unit: req.body.unit?.trim() || 'kg', slug: req.body.slug?.trim() || req.body.name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-    description: req.body.description?.trim() || null,
+      description: req.body.description?.trim() || null,
       image_url: req.body.image_url || null, stock_quantity: req.body.stock_quantity === undefined || req.body.stock_quantity === '' ? null : Number(req.body.stock_quantity),
       origin: req.body.origin?.trim() || null, farming_standard: req.body.farming_standard?.trim() || null,
       is_available: req.body.is_available !== false, is_bestseller: req.body.is_bestseller === true,
@@ -307,7 +395,7 @@ export async function updateAdminProduct(req, res) {
   try {
     const errors = validateProductPayload(req.body, { partial: true });
     if (errors.length) return res.status(400).json({ success: false, errors });
-    const fields = ['name','slug','price','description','image_url','stock_quantity','origin','farming_standard','is_available','is_bestseller','nutrition_info'];
+    const fields = ['name','slug','price','unit','description','image_url','stock_quantity','origin','farming_standard','is_available','is_bestseller','nutrition_info'];
     const update = {};
     for (const field of fields) if (Object.hasOwn(req.body, field)) update[field] = req.body[field];
     if (Object.hasOwn(req.body, 'category_id')) {
@@ -320,6 +408,7 @@ export async function updateAdminProduct(req, res) {
     if (Object.hasOwn(update, 'is_available') && typeof update.is_available !== 'boolean') return res.status(400).json({ success: false, error: 'is_available phải là boolean.' });
     if (Object.hasOwn(update, 'is_bestseller') && typeof update.is_bestseller !== 'boolean') return res.status(400).json({ success: false, error: 'is_bestseller phải là boolean.' });
     if (Object.hasOwn(update, 'price')) update.price = Number(update.price);
+    if (Object.hasOwn(req.body, 'unit')) update.unit = String(req.body.unit || '').trim() || 'kg';
     if (Object.hasOwn(update, 'stock_quantity') && update.stock_quantity !== null && update.stock_quantity !== '') update.stock_quantity = Number(update.stock_quantity);
     if (update.stock_quantity === '') update.stock_quantity = null;
     const { data, error } = await req.adminDb.from('products').update(update).eq('id', req.params.id).select('*').maybeSingle();

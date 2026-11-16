@@ -4,6 +4,7 @@ import {
   createOrder,
   getOrderById,
   getUserOrders,
+  getUserOrderSummary,
   cancelOrder,
 } from '../controllers/orderController.js';
 
@@ -14,6 +15,7 @@ router.post('/', requireAuth, createOrder);
 
 // GET    /api/orders/user/:userId — Lịch sử đơn của user (?page&limit&status)
 router.get('/user/:userId', requireAuth, getUserOrders);
+router.get('/user/:userId/summary', requireAuth, getUserOrderSummary);
 
 // GET    /api/orders/:id          — Chi tiết 1 đơn hàng (kèm items)
 router.get('/:id', requireAuth, getOrderById);

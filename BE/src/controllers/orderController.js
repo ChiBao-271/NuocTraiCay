@@ -99,6 +99,26 @@ export async function getUserOrders(req, res) {
   }
 }
 
+export async function getUserOrderSummary(req, res) {
+  try {
+    const { userId } = req.params;
+    if (userId !== req.user.id) return res.status(403).json({ success: false, error: 'Bạn không có quyền xem tổng quan đơn này.' });
+    const { data, error } = await req.userDb.from('orders').select('id,total_amount,order_status').eq('user_id', userId);
+    if (error) throw error;
+    const orders = data || [];
+    const summary = orders.reduce((acc, order) => {
+      if (order.order_status === 'completed') acc.completed += 1;
+      if (order.order_status !== 'cancelled') acc.spent += Number(order.total_amount || 0);
+      if (order.order_status === 'pending' || order.order_status === 'confirmed' || order.order_status === 'shipping') acc.inProgress += 1;
+      return acc;
+    }, { total: orders.length, completed: 0, inProgress: 0, spent: 0 });
+    return res.json({ success: true, data: summary });
+  } catch (err) {
+    console.error('[BE] getUserOrderSummary error:', err.message);
+    return res.status(500).json({ success: false, error: 'Không thể tải tổng quan hoạt động tài khoản.' });
+  }
+}
+
 // ──────────────────────────────────────────────────────
 //  PATCH /api/orders/:id/cancel  — Huỷ đơn hàng
 //  Body: { userId } (tuỳ chọn, để kiểm tra quyền sở hữu)

@@ -50,6 +50,8 @@ export default function LoginPage() {
       router.replace(nextPath);
     } else if (result.role === 'admin') {
       router.push('/admin');
+    } else if (result.role === 'supplier') {
+      router.push('/account');
     } else {
       router.push('/');
     }

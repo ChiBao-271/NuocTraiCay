@@ -18,7 +18,7 @@ async function fetchUserRole(userId, accessToken) {
     if (!res.ok || !json.success) {
       throw new Error(json.error || `Không xác minh được quyền tài khoản (HTTP ${res.status}).`);
     }
-    if (!['admin', 'customer'].includes(json.data?.role)) {
+    if (!['admin', 'customer', 'supplier'].includes(json.data?.role)) {
       throw new Error('Hồ sơ tài khoản chưa có role hợp lệ. Kiểm tra public.profiles trong Supabase.');
     }
     return json.data.role;

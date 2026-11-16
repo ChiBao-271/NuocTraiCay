@@ -11,7 +11,7 @@ import { fetchProducts } from '../services/productService.js';
 const NAV_LINKS = [
   { href: '/', label: 'Trang Chủ', exact: true },
   { href: '/rewards', label: 'Ưu Đãi' },
-  { href: '/contact', label: 'Liên Hệ' },
+  { href: '/account', label: 'Tài khoản' },
 ];
 
 function HeaderInner() {
@@ -51,8 +51,19 @@ function HeaderInner() {
     event.preventDefault();
     const term = search.trim();
     if (!term) return;
+    rememberSearch(term);
     setSearchOpen(false);
     router.push(`/menu?search=${encodeURIComponent(term)}`);
+  };
+
+  const rememberSearch = (term) => {
+    if (!user?.id || !term) return;
+    try {
+      const key = `recent_searches_${user.id}`;
+      const previous = JSON.parse(localStorage.getItem(key) || '[]');
+      const next = [term, ...(Array.isArray(previous) ? previous.filter((value) => value.toLowerCase() !== term.toLowerCase()) : [])].slice(0, 6);
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch { /* browser storage unavailable */ }
   };
 
   const displayName =
@@ -114,7 +125,7 @@ function HeaderInner() {
           autoComplete="off"
         />
         {searchOpen && <div className="header-search-results" role="listbox" aria-label="Gợi ý sản phẩm">
-          {searchLoading ? <div className="header-search-empty">Đang tìm sản phẩm…</div> : suggestions.length ? suggestions.map((product) => <Link key={product.id} href={`/product/${product.id}`} className="header-search-result" role="option" onClick={() => { setSearchOpen(false); setSearch(''); }}><span className="header-search-result-image">{product.imageUrl ? <img src={product.imageUrl} alt="" /> : product.image || '🍓'}</span><span className="header-search-result-copy"><strong>{product.name}</strong><small>{product.categoryName || product.category}</small></span><strong className="header-search-result-price">{new Intl.NumberFormat('vi-VN').format(product.price)}đ</strong></Link>) : <div className="header-search-empty">Không tìm thấy sản phẩm “{search.trim()}”.</div>}
+          {searchLoading ? <div className="header-search-empty">Đang tìm sản phẩm…</div> : suggestions.length ? suggestions.map((product) => <Link key={product.id} href={`/product/${product.id}`} className="header-search-result" role="option" onClick={() => { rememberSearch(search.trim()); setSearchOpen(false); setSearch(''); }}><span className="header-search-result-image">{product.imageUrl ? <img src={product.imageUrl} alt="" /> : product.image || '🍓'}</span><span className="header-search-result-copy"><strong>{product.name}</strong><small>{product.categoryName || product.category}</small></span><strong className="header-search-result-price">{new Intl.NumberFormat('vi-VN').format(product.price)}đ</strong></Link>) : <div className="header-search-empty">Không tìm thấy sản phẩm “{search.trim()}”.</div>}
           {!searchLoading && <button className="header-search-all" type="submit">Xem tất cả kết quả cho “{search.trim()}” ↗</button>}
         </div>}
       </form>

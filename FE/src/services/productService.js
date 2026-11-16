@@ -233,6 +233,11 @@ export async function fetchUserOrders(userId, { page = 1, limit = 10, status = '
   }
 }
 
+export async function fetchUserOrderSummary(userId) {
+  try { return { data: await apiFetch(`/api/orders/user/${encodeURIComponent(userId)}/summary`), error: null }; }
+  catch (error) { return { data: null, error }; }
+}
+
 export async function fetchOrderDetails(orderId) {
   try { return { data: await apiFetch(`/api/orders/${encodeURIComponent(orderId)}`), error: null }; }
   catch (error) { return { data: null, error }; }
@@ -257,6 +262,13 @@ export async function getUserProfile(userId) {
   }
 }
 
+export async function updateUserProfile(userId, profile) {
+  try {
+    const data = await apiFetch(`/api/users/profile/${encodeURIComponent(userId)}`, { method: 'PATCH', body: JSON.stringify(profile) });
+    return { data, error: null };
+  } catch (error) { return { data: null, error }; }
+}
+
 // ──────────────────────────────────────────────────────
 //  fetchAdminDashboard — gọi BE API
 // ──────────────────────────────────────────────────────
@@ -266,6 +278,15 @@ export async function fetchAdminDashboard() {
     return { data, error: null };
   } catch (error) {
     console.error('[FE] fetchAdminDashboard error:', error.message);
+    return { data: null, error };
+  }
+}
+
+export async function fetchAdminCatalogHealth() {
+  try {
+    return { data: await apiFetch('/api/admin/catalog-health'), error: null };
+  } catch (error) {
+    console.error('[FE] fetchAdminCatalogHealth failed:', error);
     return { data: null, error };
   }
 }
@@ -300,14 +321,16 @@ export async function fetchAdminProducts({ page = 1, limit = 20, status = 'all',
     if (search.trim()) query.set('search', search.trim());
     const result = await apiFetch(`/api/admin/products?${query}`);
     return { data: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0, error: null };
-  } catch (error) { return { data: [], total: 0, totalPages: 0, error }; }
+  } catch (error) { console.error('[FE] fetchAdminProducts failed:', error); return { data: [], total: 0, totalPages: 0, error }; }
 }
 
 export async function fetchAdminCategories() {
   try {
     const result = await apiFetch('/api/admin/categories');
-    return { data: result || [], error: null };
-  } catch (error) { return { data: [], error }; }
+    const categories = Array.isArray(result) ? result : result?.data;
+    if (!Array.isArray(categories)) throw new Error('API danh mục trả về dữ liệu không hợp lệ.');
+    return { data: categories, error: null };
+  } catch (error) { console.error('[FE] fetchAdminCategories failed:', error); return { data: [], error }; }
 }
 
 export async function saveAdminCategory(category, originalId = null) {
@@ -318,11 +341,13 @@ export async function saveAdminCategory(category, originalId = null) {
   } catch (error) { return { data: null, error }; }
 }
 
-export async function fetchAdminUsers({ page = 1, limit = 20 } = {}) {
+export async function fetchAdminUsers({ page = 1, limit = 20, role = '' } = {}) {
   try {
-    const result = await apiFetch(`/api/admin/users?${new URLSearchParams({ page: String(page), limit: String(limit) })}`);
-    return { data: result.data || [], total: result.total || 0, error: null };
-  } catch (error) { return { data: [], total: 0, error }; }
+    const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (role) query.set('role', role);
+    const result = await apiFetch(`/api/admin/users?${query}`);
+    return { data: result.data || [], total: result.total ?? result.data?.length ?? 0, totalPages: result.totalPages ?? Math.ceil((result.total ?? result.data?.length ?? 0) / limit), error: null };
+  } catch (error) { console.error('[FE] fetchAdminUsers failed:', error); return { data: [], total: 0, totalPages: 0, error }; }
 }
 
 export async function updateAdminUserRole(userId, role) {
