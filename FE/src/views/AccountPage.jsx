@@ -10,13 +10,14 @@ import { cancelUserOrder, fetchOrderDetails, fetchUserOrders, fetchUserOrderSumm
 const STATUS = {
   pending: ['Chờ xác nhận', 'status-pending'],
   confirmed: ['Đã xác nhận', 'status-confirmed'],
+  preparing: ['Đang chuẩn bị', 'status-preparing'],
   shipping: ['Đang giao', 'status-shipping'],
   completed: ['Hoàn tất', 'status-completed'],
   cancelled: ['Đã hủy', 'status-cancelled'],
 };
 const FILTERS = [
   ['all', 'Tất cả'], ['pending', 'Chờ xác nhận'], ['confirmed', 'Đã xác nhận'],
-  ['shipping', 'Đang giao'], ['completed', 'Hoàn tất'], ['cancelled', 'Đã hủy'],
+  ['preparing', 'Đang chuẩn bị'], ['shipping', 'Đang giao'], ['completed', 'Hoàn tất'], ['cancelled', 'Đã hủy'],
 ];
 
 export function AccountPage() {

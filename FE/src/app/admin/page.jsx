@@ -112,7 +112,7 @@ export default function AdminDashboardPage() {
             icon="💰"
             label="Doanh thu tháng này"
             value={formatCurrency(stats?.monthRevenue ?? 0)}
-            sub={`${stats?.monthOrders ?? 0} đơn hàng`}
+            sub={(stats?.monthOrders ?? 0) + ' đơn · đã thu ' + formatCurrency(stats?.monthPaidRevenue ?? 0)}
             color="#22c55e"
           />
           <StatCard

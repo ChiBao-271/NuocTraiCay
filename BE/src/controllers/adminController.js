@@ -65,14 +65,23 @@ export async function getDashboard(req, res) {
       if (!nextPage?.length) break;
       monthOrders.push(...nextPage);
     }
-    const monthRevenue = monthOrders
+    // Giá trị đơn trong tháng: mọi đơn chưa huỷ, chưa hoàn tiền, thanh toán không lỗi.
+    // (Trước đây chỉ tính đơn đã thanh toán/đã giao nên tháng có đơn mà vẫn hiện 0 đ.)
+    const billableOrders = monthOrders.filter((order) => {
+      const status = String(order.order_status || '').toLowerCase();
+      const paymentStatus = String(order.payment_status || '').toLowerCase();
+      if (status === 'cancelled') return false;
+      if (paymentStatus === 'refunded' || paymentStatus === 'failed') return false;
+      return true;
+    });
+    const monthRevenue = billableOrders.reduce((acc, o) => acc + Number(o.total_amount ?? 0), 0);
+    // Tiền thực sự đã thu: COD khi đơn hoàn tất, chuyển khoản khi đã thanh toán.
+    const monthPaidRevenue = monthOrders
       .filter((order) => {
-        if (order.order_status === 'cancelled') return false;
+        if (String(order.order_status || '').toLowerCase() === 'cancelled') return false;
         const method = String(order.payment_method || '').trim().toLowerCase();
         const paymentStatus = String(order.payment_status || '').trim().toLowerCase();
-        // COD revenue is realized on delivery; online transfers count only
-        // after the provider confirms payment.
-        return method === 'cod' ? order.order_status === 'completed' : paymentStatus === 'paid';
+        return method === 'cod' ? String(order.order_status || '').toLowerCase() === 'completed' : paymentStatus === 'paid';
       })
       .reduce((acc, o) => acc + Number(o.total_amount ?? 0), 0);
 
@@ -88,6 +97,7 @@ export async function getDashboard(req, res) {
           pendingOrders: pendingRes.count ?? 0,
           monthOrders: monthOrdersRes.count ?? monthOrders.length,
           monthRevenue,
+          monthPaidRevenue,
           totalCustomers: customersRes.count ?? 0,
           totalProducts: productsRes.count ?? 0,
         },
