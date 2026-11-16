@@ -169,7 +169,7 @@ export async function getAllOrders(req, res) {
     const { data, error, count } = await query;
     if (error) {
       console.error('[BE] getAllOrders DB error:', error.code, error.message);
-      return res.status(500).json({ success: false, code: error.code || 'ADMIN_ORDERS_LOAD_FAILED', error: `Supabase orders query failed (${error.code || 'unknown'}): ${error.message || 'unknown'}` });
+      return res.status(500).json({ success: false, code: error.code || 'ADMIN_ORDERS_LOAD_FAILED', error: 'Không thể tải danh sách đơn hàng. Vui lòng thử lại.' });
     }
 
     res.json({ success: true, data: data || [], total: count ?? 0, page: pageNumber, limit: pageSize, totalPages: Math.ceil((count ?? 0) / pageSize) });
@@ -189,7 +189,7 @@ export async function getAdminOrderDetails(req, res) {
     return res.json({ success: true, data: { ...order, items: items || [] } });
   } catch (err) {
     console.error('[BE] getAdminOrderDetails error:', err.message);
-    return res.status(500).json({ success: false, code: err.code || 'ADMIN_ORDER_DETAILS_FAILED', error: `Order detail query failed (${err.code || 'unknown'}): ${err.message || 'unknown'}` });
+    return res.status(500).json({ success: false, code: err.code || 'ADMIN_ORDER_DETAILS_FAILED', error: 'Không thể tải chi tiết đơn hàng. Vui lòng thử lại.' });
   }
 }
 
@@ -200,10 +200,10 @@ export async function updateOrderStatus(req, res) {
   try {
     const { id } = req.params;
     const { order_status } = req.body;
-    const allowed = ['pending', 'confirmed', 'shipping', 'completed', 'cancelled'];
+    const allowed = ['pending', 'confirmed', 'preparing', 'shipping', 'completed', 'cancelled'];
 
     if (!allowed.includes(order_status)) return res.status(400).json({ success: false, error: 'Trạng thái đơn hàng không hợp lệ.' });
-    const transitions = { pending: ['confirmed', 'cancelled'], confirmed: ['shipping', 'cancelled'], shipping: ['completed'], completed: [], cancelled: [] };
+    const transitions = { pending: ['confirmed', 'cancelled'], confirmed: ['preparing', 'shipping', 'cancelled'], preparing: ['shipping', 'cancelled'], shipping: ['completed'], completed: [], cancelled: [] };
     const { data: current, error: currentError } = await req.adminDb
       .from('orders').select('id, order_code, order_status').eq('id', id).maybeSingle();
     if (currentError) throw currentError;
@@ -263,7 +263,7 @@ export async function getAdminProducts(req, res) {
     const { data, error, count } = await query;
     if (error) {
       console.error('[BE] getAdminProducts DB error:', error.code, error.message);
-      return res.status(500).json({ success: false, code: error.code || 'ADMIN_PRODUCTS_LOAD_FAILED', error: `Products query failed (${error.code || 'unknown'}): ${error.message || 'unknown'}` });
+      return res.status(500).json({ success: false, code: error.code || 'ADMIN_PRODUCTS_LOAD_FAILED', error: 'Không thể tải danh sách sản phẩm. Vui lòng thử lại.' });
     }
     res.json({ success: true, data: data || [], total: count ?? 0, page, limit, totalPages: Math.ceil((count ?? 0) / limit) });
   } catch (err) {
@@ -271,7 +271,7 @@ export async function getAdminProducts(req, res) {
     res.status(500).json({
       success: false,
       code: err.code || 'ADMIN_PRODUCTS_LOAD_FAILED',
-      error: `Không thể tải danh sách sản phẩm từ Supabase${err.code ? ` (${err.code})` : ''}: ${err.message || 'unknown error'}`,
+      error: 'Không thể tải danh sách sản phẩm. Vui lòng thử lại.',
     });
   }
 }
@@ -281,12 +281,12 @@ export async function getAdminCategories(req, res) {
     const { data, error } = await req.adminDb.from('categories').select('id,name,slug,icon,is_active,display_order').order('display_order', { ascending: true }).order('name', { ascending: true });
     if (error) {
       console.error('[BE] getAdminCategories DB error:', error.code, error.message);
-      return res.status(500).json({ success: false, code: error.code || 'ADMIN_CATEGORIES_LOAD_FAILED', error: `Không thể tải danh mục từ Supabase${error.code ? ` (${error.code})` : ''}: ${error.message || 'unknown error'}` });
+      return res.status(500).json({ success: false, code: error.code || 'ADMIN_CATEGORIES_LOAD_FAILED', error: 'Không thể tải danh mục. Vui lòng thử lại.' });
     }
     res.json({ success: true, data: data || [] });
   } catch (err) {
     console.error('[BE] getAdminCategories error:', err.message);
-    res.status(500).json({ success: false, code: err.code || 'ADMIN_CATEGORIES_LOAD_FAILED', error: `Không thể tải danh mục từ Supabase${err.code ? ` (${err.code})` : ''}: ${err.message || 'unknown error'}` });
+    res.status(500).json({ success: false, code: err.code || 'ADMIN_CATEGORIES_LOAD_FAILED', error: 'Không thể tải danh mục. Vui lòng thử lại.' });
   }
 }
 
@@ -337,7 +337,7 @@ export async function getAdminUsers(req, res) {
     res.json({ success: true, data: users, total, page, limit: perPage, totalPages: Math.ceil(total / perPage), hasNextPage: page * perPage < total });
   } catch (err) {
     console.error('[BE] getAdminUsers error:', err.message);
-    res.status(500).json({ success: false, code: err.code || 'ADMIN_USERS_LOAD_FAILED', error: `Không thể tải tài khoản từ Supabase Auth/profiles${err.code ? ` (${err.code})` : ''}: ${err.message || 'unknown error'}` });
+    res.status(500).json({ success: false, code: err.code || 'ADMIN_USERS_LOAD_FAILED', error: 'Không thể tải danh sách tài khoản. Vui lòng thử lại.' });
   }
 }
 

@@ -19,12 +19,12 @@ async function fetchUserRole(userId, accessToken) {
       throw new Error(json.error || `Không xác minh được quyền tài khoản (HTTP ${res.status}).`);
     }
     if (!['admin', 'customer', 'supplier'].includes(json.data?.role)) {
-      throw new Error('Hồ sơ tài khoản chưa có role hợp lệ. Kiểm tra public.profiles trong Supabase.');
+      throw new Error('Tài khoản chưa được gán quyền (khách/admin). Vui lòng liên hệ quản trị viên.');
     }
     return json.data.role;
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(`Không kết nối được backend để xác minh quyền. Kiểm tra NEXT_PUBLIC_BE_URL (${BE_URL}).`);
+      throw new Error('Không kết nối được máy chủ để kiểm tra quyền. Vui lòng thử lại sau.');
     }
     throw error;
   }
@@ -85,7 +85,7 @@ export function AuthProvider({ children }) {
 
   const signIn = async ({ email, password }) => {
     if (!isSupabaseConfigured) {
-      return { error: { message: 'Supabase chưa được cấu hình cho frontend. Hãy đặt NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY (hoặc NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) trong môi trường deploy rồi build lại.' } };
+      return { error: { message: 'Hệ thống đăng nhập chưa được cấu hình. Vui lòng liên hệ quản trị viên.' } };
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });

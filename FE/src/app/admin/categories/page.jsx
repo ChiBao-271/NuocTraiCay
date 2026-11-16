@@ -49,7 +49,7 @@ export default function AdminCategoriesPage() {
       </div>
       {error && <div className="admin-orders-error" role="alert">{error}</div>}
       <div className="admin-panel admin-products-panel">
-        {loading ? <div className="admin-orders-empty">Đang tải danh mục…</div> : error ? <div className="admin-orders-empty">Không tải được danh mục. Lỗi backend ở trên sẽ chỉ rõ bảng/cột/quyền cần kiểm tra.</div> : categories.length === 0 ? <div className="admin-orders-empty">Database hiện chưa có danh mục nào. Thêm danh mục tại đây.</div> : (
+        {loading ? <div className="admin-orders-empty">Đang tải danh mục…</div> : error ? <div className="admin-orders-empty">Không tải được danh mục. Bấm “Làm mới” hoặc tải lại trang.</div> : categories.length === 0 ? <div className="admin-orders-empty">Cửa hàng chưa có danh mục nào. Bấm “Thêm danh mục” để tạo mới.</div> : (
           <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Danh mục</th><th>Slug</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
             {categories.map((category) => <tr key={category.id}><td>{category.name}</td><td>{category.slug}</td><td>{category.is_active ? 'Hiển thị' : 'Đang ẩn'}</td><td><button className="btn btn-ghost" onClick={() => open(category)}>Sửa</button></td></tr>)}
           </tbody></table></div>

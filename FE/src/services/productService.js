@@ -5,7 +5,9 @@ import { supabase } from '../supabase/client.js';
 
 const BE_URL = process.env.NEXT_PUBLIC_BE_URL || 'http://localhost:5000';
 
-async function apiFetch(path, options = {}) {
+// Trả về NGUYÊN phong bì (envelope) của API: { success, data, total, page, totalPages }
+// Dùng cho các endpoint có phân trang vì total/totalPages nằm ngoài "data".
+async function apiRequest(path, options = {}) {
   // Public catalog requests should not wait for Supabase session recovery.
   const needsAuth = path.startsWith('/api/orders') || path.startsWith('/api/payments') || path.startsWith('/api/admin') || path.startsWith('/api/users');
   let accessToken;
@@ -32,6 +34,12 @@ async function apiFetch(path, options = {}) {
     error.recalculated_total = json.recalculated_total ?? (json.error?.match?.(/ORDER_TOTAL_CHANGED:(\d+)/)?.[1] ? Number(json.error.match(/ORDER_TOTAL_CHANGED:(\d+)/)[1]) : undefined);
     throw error;
   }
+  return json;
+}
+
+// Trả về đúng phần "data" đã bóc phong bì (dùng cho endpoint không phân trang).
+async function apiFetch(path, options = {}) {
+  const json = await apiRequest(path, options);
   return json.data;
 }
 
@@ -226,8 +234,8 @@ export async function createSePayCheckout({ customer, items, total, note, vouche
 export async function fetchUserOrders(userId, { page = 1, limit = 10, status = 'all' } = {}) {
   try {
     const query = new URLSearchParams({ page: String(page), limit: String(limit), status });
-    const data = await apiFetch(`/api/orders/user/${encodeURIComponent(userId)}?${query}`);
-    return { data: data.data || [], total: data.total || 0, page: data.page || page, totalPages: data.totalPages || 0, error: null };
+    const result = await apiRequest(`/api/orders/user/${encodeURIComponent(userId)}?${query}`);
+    return { data: Array.isArray(result.data) ? result.data : [], total: result.total ?? 0, page: result.page ?? page, totalPages: result.totalPages ?? 0, error: null };
   } catch (error) {
     return { data: [], total: 0, page, totalPages: 0, error };
   }
@@ -298,8 +306,8 @@ export async function fetchAdminOrders({ page = 1, limit = 20, status = 'all', p
     if (search.trim()) query.set('search', search.trim());
     if (from) query.set('from', from);
     if (to) query.set('to', to);
-    const result = await apiFetch(`/api/admin/orders?${query}`);
-    return { data: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0, error: null };
+    const result = await apiRequest(`/api/admin/orders?${query}`);
+    return { data: Array.isArray(result.data) ? result.data : [], total: result.total ?? 0, totalPages: result.totalPages ?? 0, error: null };
   } catch (error) { return { data: [], total: 0, totalPages: 0, error }; }
 }
 
@@ -319,8 +327,8 @@ export async function fetchAdminProducts({ page = 1, limit = 20, status = 'all',
   try {
     const query = new URLSearchParams({ page: String(page), limit: String(limit), status, category });
     if (search.trim()) query.set('search', search.trim());
-    const result = await apiFetch(`/api/admin/products?${query}`);
-    return { data: result.data || [], total: result.total || 0, totalPages: result.totalPages || 0, error: null };
+    const result = await apiRequest(`/api/admin/products?${query}`);
+    return { data: Array.isArray(result.data) ? result.data : [], total: result.total ?? 0, totalPages: result.totalPages ?? 0, error: null };
   } catch (error) { console.error('[FE] fetchAdminProducts failed:', error); return { data: [], total: 0, totalPages: 0, error }; }
 }
 
@@ -345,8 +353,10 @@ export async function fetchAdminUsers({ page = 1, limit = 20, role = '' } = {}) 
   try {
     const query = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (role) query.set('role', role);
-    const result = await apiFetch(`/api/admin/users?${query}`);
-    return { data: result.data || [], total: result.total ?? result.data?.length ?? 0, totalPages: result.totalPages ?? Math.ceil((result.total ?? result.data?.length ?? 0) / limit), error: null };
+    const result = await apiRequest(`/api/admin/users?${query}`);
+    const rows = Array.isArray(result.data) ? result.data : [];
+    const rowTotal = result.total ?? rows.length;
+    return { data: rows, total: rowTotal, totalPages: result.totalPages ?? Math.max(1, Math.ceil(rowTotal / limit)), error: null };
   } catch (error) { console.error('[FE] fetchAdminUsers failed:', error); return { data: [], total: 0, totalPages: 0, error }; }
 }
 
