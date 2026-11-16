@@ -77,7 +77,6 @@ export default function ProductDetailPage() {
 
   const isDrink = product.category === 'juice' || product.category === 'smoothie';
   const WEIGHT_OPTIONS = isDrink ? ['250ml', '350ml', '500ml'] : [product.unit || 'kg'];
-  const weightLabel = isDrink ? 'Dung tích' : (product.category === 'combo' ? 'Quy cách' : 'Khối lượng');
   const currentWeight = isDrink ? activeWeight : (product.unit || 'kg');
 
   const REVIEWS = [
@@ -134,9 +133,10 @@ export default function ProductDetailPage() {
 
             <p className="product-detail-desc">{product.description}</p>
 
-            {/* Weight options */}
+            {/* Đồ uống: chọn dung tích. Trái cây/combo: mô tả ngắn thay cho khối lượng */}
+            {isDrink ? (
             <div className="pd-weight-section">
-              <label className="pd-option-label">{weightLabel}</label>
+              <label className="pd-option-label">Dung tích</label>
               <div className="pd-weight-pills">
                 {WEIGHT_OPTIONS.map((w) => (
                   <button
@@ -148,6 +148,19 @@ export default function ProductDetailPage() {
                 ))}
               </div>
             </div>
+            ) : (
+              <div className="pd-short-note">
+                <p>{product.category === 'combo'
+                  ? 'Combo tiện lợi, dùng ngon nhất trong 2 ngày sau khi nhận.'
+                  : 'Trái cây tươi hái trong ngày, ngon nhất khi dùng sớm.'}</p>
+                <div className="pd-short-note-chips">
+                  {product.origin && <span>📍 {product.origin}</span>}
+                  {product.farmingStandard && <span>🌿 {product.farmingStandard}</span>}
+                  <span>🧊 Bảo quản ngăn mát 3–5 ngày</span>
+                  <span>💧 Rửa sạch trước khi dùng</span>
+                </div>
+              </div>
+            )}
 
             {/* Sweetness */}
             <div className={'product-detail-options' + (isDrink ? '' : ' pd-hide')}>

@@ -7416,3 +7416,35 @@ textarea:focus {
 
 /* Trái cây tươi / combo: không hiển thị tuỳ chọn độ ngọt của nước ép */
 .pd-hide { display: none !important; }
+
+/* Trái cây tươi / combo: mô tả ngắn thay cho khối chọn khối lượng */
+.pd-short-note {
+  margin: 1rem 0 1.2rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(58, 165, 31, .16);
+  border-radius: 16px;
+  background: #f6fbf1;
+}
+
+.pd-short-note p {
+  margin: 0 0 .6rem;
+  color: #3c4a35;
+  font-size: .92rem;
+  font-weight: 600;
+}
+
+.pd-short-note-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.pd-short-note-chips span {
+  padding: .3rem .65rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(58, 165, 31, .18);
+  color: #35702a;
+  font-size: .78rem;
+  font-weight: 700;
+}
